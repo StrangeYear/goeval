@@ -241,6 +241,12 @@ func (v Value) OR(v2 Value) Value {
 }
 
 func (v Value) EQ(v2 Value) Value {
+	if v.vType == Number && v2.vType == Number {
+		return Value{
+			val:   v.Float() == v2.Float(),
+			vType: Boolean,
+		}
+	}
 	return Value{
 		val:   v.String() == v2.String(),
 		vType: Boolean,

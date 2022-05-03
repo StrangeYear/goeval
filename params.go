@@ -28,7 +28,7 @@ func SelectValue(value interface{}, key string) interface{} {
 		if vvElem.IsValid() {
 			return vvElem.Interface()
 		}
-	case reflect.Slice:
+	case reflect.Slice, reflect.Array, reflect.String:
 		if i, err := NewValue("", key).Int(); err == nil && i >= 0 && vv.Len() > i {
 			vvElem = resolvePotentialPointer(vv.Index(i))
 			return vvElem.Interface()

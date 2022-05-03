@@ -170,35 +170,32 @@ func EvalString(expr string, args ...interface{}) (string, error) {
 	return Full().EvalString(expr, args...)
 }
 
+// parseArgs parses the arguments to the evaluable function. supports map[string]interface{} or map[string]otherType
 func parseArgs(args ...interface{}) (map[string]interface{}, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
 	pArgs := make(map[string]interface{})
 	for _, arg := range args {
+		if arg == nil {
+			continue
+		}
 		switch v := arg.(type) {
 		case map[string]interface{}:
 			for k, v := range v {
 				pArgs[k] = v
-			}
-		case map[interface{}]interface{}:
-			for k, v := range v {
-				pArgs[fmt.Sprintf("%d", k)] = v
 			}
 		default:
 			rv := reflect.ValueOf(arg)
 			if rv.Kind() == reflect.Ptr {
 				rv = rv.Elem()
 			}
-			if rv.Kind() == reflect.Struct {
-				for i := 0; i < rv.NumField(); i++ {
-					f := rv.Field(i)
-					if f.CanInterface() {
-						pArgs[rv.Type().Field(i).Name] = f.Interface()
-					}
+			if rv.Kind() == reflect.Map && rv.Type().Key().Kind() == reflect.String {
+				for _, k := range rv.MapKeys() {
+					pArgs[k.String()] = rv.MapIndex(k).Interface()
 				}
 			} else {
-				return nil, fmt.Errorf("invalid argument type: %T", arg)
+				return nil, fmt.Errorf("unsupported argument type: %T", arg)
 			}
 		}
 	}
