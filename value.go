@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -34,6 +35,7 @@ const (
 	String
 	Array
 	Time
+	Duration
 	Json
 	Struct
 	Map
@@ -43,11 +45,41 @@ const (
 
 type Value struct {
 	name  string
-	val   interface{}
+	val   any
 	vType uint8
 }
 
-func NewValue(name string, v interface{}) Value {
+func convertNumberToFloat(num any) float64 {
+	switch n := num.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int8:
+		return float64(n)
+	case int16:
+		return float64(n)
+	case int32:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case uint:
+		return float64(n)
+	case uint8:
+		return float64(n)
+	case uint16:
+		return float64(n)
+	case uint32:
+		return float64(n)
+	case uint64:
+		return float64(n)
+	}
+	return 0
+}
+
+func NewValue(name string, v any) Value {
 	res := Value{
 		name:  name,
 		val:   v,
@@ -66,12 +98,15 @@ func NewValue(name string, v interface{}) Value {
 		res.vType = String
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		res.vType = Number
-	case []interface{}:
+		res.val = convertNumberToFloat(v)
+	case []any:
 		res.vType = Array
 	case gjson.Result:
 		res.vType = Json
 	case time.Time:
 		res.vType = Time
+	case time.Duration:
+		res.vType = Duration
 	default:
 		rv := reflect.ValueOf(v)
 		if rv.Kind() == reflect.Ptr {
@@ -107,6 +142,8 @@ func (v Value) Float() (float64, error) {
 		return f, nil
 	case Time:
 		return float64(v.val.(time.Time).Unix()), nil
+	case Duration:
+		return float64(v.val.(time.Duration)), nil
 	case Json:
 		return v.val.(gjson.Result).Float(), nil
 	case Nil:
@@ -116,11 +153,12 @@ func (v Value) Float() (float64, error) {
 		return 0, fmt.Errorf("variable '%s' is nil, can not convert to number", v.name)
 	case Error:
 		return 0, fmt.Errorf("%v", v.val)
+	default:
+		if v.name == "" {
+			return 0, fmt.Errorf("unknown value type of %#v", v.val)
+		}
+		return 0, fmt.Errorf("unknow value type of variable '%s'", v.name)
 	}
-	if v.name == "" {
-		return 0, fmt.Errorf("unknown value type of %#v", v.val)
-	}
-	return 0, fmt.Errorf("unknow value type of variable '%s'", v.name)
 }
 
 func (v Value) Int() (int, error) {
@@ -131,24 +169,24 @@ func (v Value) Int() (int, error) {
 	return int(val), nil
 }
 
-func (v Value) Array() ([]interface{}, error) {
+func (v Value) Array() ([]any, error) {
 	switch v.vType {
 	case Array:
-		if val, ok := v.val.([]interface{}); ok {
+		if val, ok := v.val.([]any); ok {
 			return val, nil
 		}
 		rv := reflect.ValueOf(v.val)
 		if rv.Kind() == reflect.Ptr {
 			rv = rv.Elem()
 		}
-		val := make([]interface{}, 0, rv.Len())
+		val := make([]any, 0, rv.Len())
 		for i := 0; i < rv.Len(); i++ {
 			val = append(val, rv.Index(i).Interface())
 		}
 		return val, nil
 	case Json:
 		array := v.val.(gjson.Result).Array()
-		results := make([]interface{}, len(array))
+		results := make([]any, len(array))
 		for i, r := range array {
 			results[i] = r.Value()
 		}
@@ -161,7 +199,7 @@ func (v Value) Array() ([]interface{}, error) {
 		if s[0] != '[' || s[len(s)-1] != ']' {
 			return nil, fmt.Errorf("value '%s' is not array", s)
 		}
-		res := make([]interface{}, 0)
+		res := make([]any, 0)
 		err := json.Unmarshal([]byte(s), &res)
 		if err != nil {
 			return nil, err
@@ -169,11 +207,12 @@ func (v Value) Array() ([]interface{}, error) {
 		return res, nil
 	case Error:
 		return nil, fmt.Errorf("%v", v.val)
+	default:
+		if v.name == "" {
+			return nil, fmt.Errorf("unknown value [%v] type for parse array", v.val)
+		}
+		return nil, fmt.Errorf("unknow value [%v] type of variable '%s' for parse array", v.val, v.name)
 	}
-	if v.name == "" {
-		return nil, fmt.Errorf("unknown value [%v] type for parse array", v.val)
-	}
-	return nil, fmt.Errorf("unknow value [%v] type of variable '%s' for parse array", v.val, v.name)
 }
 
 func (v Value) String() string {
@@ -182,6 +221,8 @@ func (v Value) String() string {
 		return v.val.(string)
 	case Time:
 		return v.val.(time.Time).Format(time.RFC3339)
+	case Duration:
+		return v.val.(time.Duration).String()
 	case Json:
 		return v.val.(gjson.Result).String()
 	default:
@@ -199,7 +240,7 @@ func (v Value) Boolean() bool {
 		return false
 	default:
 		s := strings.ToLower(fmt.Sprintf("%v", v.val))
-		return s != "" && s != "false"
+		return s == "true"
 	}
 }
 
@@ -372,86 +413,197 @@ func (v Value) MATCH(v2 Value) Value {
 }
 
 func (v Value) ADD(v2 Value) Value {
-	f, err := v.Float()
-	if err != nil {
+	switch {
+	case v.vType == Time && v2.vType == Duration:
 		return Value{
-			val:   v.String() + v2.String(),
-			vType: String,
+			val:   v.val.(time.Time).Add(v2.val.(time.Duration)),
+			vType: Time,
 		}
-	}
-	f2, err := v2.Float()
-	if err != nil {
+	case v.vType == Duration && v2.vType == Time:
 		return Value{
-			val:   v.String() + v2.String(),
-			vType: String,
+			val:   v2.val.(time.Time).Add(v.val.(time.Duration)),
+			vType: Time,
 		}
-	}
-	return Value{
-		val:   f + f2,
-		vType: Number,
+	case v.vType == Duration && v2.vType == Duration:
+		return Value{
+			val:   v.val.(time.Duration) + v2.val.(time.Duration),
+			vType: Duration,
+		}
+	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
+		f, _ := v.Float()
+		f2, _ := v2.Float()
+		return Value{
+			val:   time.Duration(f) + time.Duration(f2),
+			vType: Duration,
+		}
+	case v.vType == Number && v2.vType == Number:
+		f := v.val.(float64)
+		f2 := v2.val.(float64)
+		return Value{
+			val:   f + f2,
+			vType: Number,
+		}
+	default:
+		f, err := v.Float()
+		if err != nil {
+			return Value{
+				val:   v.String() + v2.String(),
+				vType: String,
+			}
+		}
+		f2, err := v2.Float()
+		if err != nil {
+			return Value{
+				val:   v.String() + v2.String(),
+				vType: String,
+			}
+		}
+		return Value{
+			val:   f + f2,
+			vType: Number,
+		}
 	}
 }
 
 func (v Value) SUB(v2 Value) Value {
-	f, err := v.Float()
-	if err != nil {
+	switch {
+	case v.vType == Time && v2.vType == Duration:
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   v.val.(time.Time).Add(-v2.val.(time.Duration)),
+			vType: Time,
 		}
-	}
-	f2, err := v2.Float()
-	if err != nil {
+	case v.vType == Duration && v2.vType == Time:
+		panic("time - duration is not supported")
+	case v.vType == Duration && v2.vType == Duration:
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   v.val.(time.Duration) - v2.val.(time.Duration),
+			vType: Duration,
 		}
-	}
-	return Value{
-		val:   f - f2,
-		vType: Number,
+	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
+		f, _ := v.Float()
+		f2, _ := v2.Float()
+		return Value{
+			val:   time.Duration(f) - time.Duration(f2),
+			vType: Duration,
+		}
+	case v.vType == Time && v2.vType == Time:
+		return Value{
+			val:   v.val.(time.Time).Sub(v2.val.(time.Time)),
+			vType: Duration,
+		}
+	case v.vType == Number && v2.vType == Number:
+		f := v.val.(float64)
+		f2 := v2.val.(float64)
+		return Value{
+			val:   f - f2,
+			vType: Number,
+		}
+	default:
+		f, err := v.Float()
+		if err != nil {
+			return Value{
+				val:   err.Error(),
+				vType: Error,
+			}
+		}
+		f2, err := v2.Float()
+		if err != nil {
+			return Value{
+				val:   err.Error(),
+				vType: Error,
+			}
+		}
+		return Value{
+			val:   f - f2,
+			vType: Number,
+		}
 	}
 }
 
 func (v Value) MULTI(v2 Value) Value {
-	f, err := v.Float()
-	if err != nil {
+	switch {
+	case v.vType == Duration && v2.vType == Duration:
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   v.val.(time.Duration) * v2.val.(time.Duration),
+			vType: Duration,
 		}
-	}
-	f2, err := v2.Float()
-	if err != nil {
+	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
+		f, _ := v.Float()
+		f2, _ := v2.Float()
+		log.Println(f, f2)
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   time.Duration(f) * time.Duration(f2),
+			vType: Duration,
 		}
-	}
-	return Value{
-		val:   f * f2,
-		vType: Number,
+	case v.vType == Number && v2.vType == Number:
+		f := v.val.(float64)
+		f2 := v2.val.(float64)
+		return Value{
+			val:   f * f2,
+			vType: Number,
+		}
+	default:
+		f, err := v.Float()
+		if err != nil {
+			return Value{
+				val:   err.Error(),
+				vType: Error,
+			}
+		}
+		f2, err := v2.Float()
+		if err != nil {
+			return Value{
+				val:   err.Error(),
+				vType: Error,
+			}
+		}
+		return Value{
+			val:   f * f2,
+			vType: Number,
+		}
 	}
 }
 
 func (v Value) DIV(v2 Value) Value {
-	f, err := v.Float()
-	if err != nil {
+	switch {
+	case v.vType == Duration && v2.vType == Duration:
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   v.val.(time.Duration) / v2.val.(time.Duration),
+			vType: Duration,
 		}
-	}
-	f2, err := v2.Float()
-	if err != nil {
+	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
+		f, _ := v.Float()
+		f2, _ := v2.Float()
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   time.Duration(f) / time.Duration(f2),
+			vType: Duration,
 		}
-	}
-	return Value{
-		val:   f / f2,
-		vType: Number,
+	case v.vType == Number && v2.vType == Number:
+		f := v.val.(float64)
+		f2 := v2.val.(float64)
+		return Value{
+			val:   f / f2,
+			vType: Number,
+		}
+	default:
+		f, err := v.Float()
+		if err != nil {
+			return Value{
+				val:   err.Error(),
+				vType: Error,
+			}
+		}
+		f2, err := v2.Float()
+		if err != nil {
+			return Value{
+				val:   err.Error(),
+				vType: Error,
+			}
+		}
+		return Value{
+			val:   f / f2,
+			vType: Number,
+		}
 	}
 }
 
@@ -481,7 +633,7 @@ func (v Value) NC(v2 Value) Value {
 		(v.vType == Boolean && !v.Boolean()) ||
 		(v.vType == String && len(v.String()) == 0) ||
 		(v.vType == Number && v.val.(float64) == 0) ||
-		(v.vType == Array && len(v.val.([]interface{})) == 0) {
+		(v.vType == Array && len(v.val.([]any)) == 0) {
 		return v2
 	}
 	return v

@@ -12,25 +12,17 @@ import (
 type Evaluable struct {
 	// custom functions
 	fns map[string]Func
-	// custom operators
-	ops map[string]Operator
 }
 
-type Func func(...interface{}) (interface{}, error)
+type Func func(...any) (any, error)
 
-type Operator func(interface{}, interface{}) (interface{}, error)
+type Operator func(any, any) (any, error)
 
 type Option func(*Evaluable)
 
 func WithFunc(name string, fn Func) Option {
 	return func(e *Evaluable) {
 		e.fns[name] = fn
-	}
-}
-
-func WithOperator(op string, fn Operator) Option {
-	return func(e *Evaluable) {
-		e.ops[op] = fn
 	}
 }
 
@@ -45,10 +37,10 @@ func NewEvaluable(opts ...Option) *Evaluable {
 }
 
 var full = NewEvaluable(
-	WithFunc("now", func(args ...interface{}) (interface{}, error) {
+	WithFunc("now", func(args ...any) (any, error) {
 		return time.Now(), nil
 	}),
-	WithFunc("date", func(args ...interface{}) (interface{}, error) {
+	WithFunc("date", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("date() expects exactly one argument")
 		}
@@ -80,7 +72,7 @@ var full = NewEvaluable(
 		}
 		return nil, fmt.Errorf("date() expects a string or a number argument")
 	}),
-	WithFunc("strlen", func(args ...interface{}) (interface{}, error) {
+	WithFunc("strlen", func(args ...any) (any, error) {
 		if len(args) != 1 {
 			return nil, fmt.Errorf("strlen() expects exactly one string argument")
 		}
@@ -89,6 +81,52 @@ var full = NewEvaluable(
 			return nil, fmt.Errorf("strlen() expects exactly one string argument")
 		}
 		return len(s), nil
+	}),
+	WithFunc("duration", func(args ...any) (any, error) {
+		if len(args) < 1 {
+			return nil, fmt.Errorf("date() expects at least one argument")
+		}
+		var (
+			d   time.Duration
+			err error
+		)
+		switch arg := args[0].(type) {
+		case string:
+			d, err = time.ParseDuration(arg)
+		case float64:
+			d = time.Duration(arg)
+		default:
+			err = fmt.Errorf("duration() expects a string or a number argument")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(args) == 1 {
+			return d, nil
+		}
+
+		unit, ok := args[1].(string)
+		if !ok {
+			return nil, fmt.Errorf("duration() expects a string unit argument")
+		}
+		switch unit {
+		case "ns":
+			return d.Nanoseconds(), nil
+		case "us":
+			return d.Microseconds(), nil
+		case "ms":
+			return d.Milliseconds(), nil
+		case "s":
+			return d.Seconds(), nil
+		case "m":
+			return d.Minutes(), nil
+		case "h":
+			return d.Hours(), nil
+		case "d":
+			return d.Hours() / 24, nil
+		default:
+			return nil, fmt.Errorf("duration() expects a valid unit argument")
+		}
 	}),
 )
 
@@ -102,7 +140,7 @@ func Full(opts ...Option) *Evaluable {
 	return NewEvaluable(opts...)
 }
 
-func (e *Evaluable) Eval(expr string, args ...interface{}) (val Value, tokens []string, err error) {
+func (e *Evaluable) Eval(expr string, args ...any) (val Value, tokens []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			val = nilValue
@@ -118,7 +156,7 @@ func (e *Evaluable) Eval(expr string, args ...interface{}) (val Value, tokens []
 	return lex.answer, lex.tokens, lex.err
 }
 
-func (e *Evaluable) EvalBool(expr string, args ...interface{}) (bool, error) {
+func (e *Evaluable) EvalBool(expr string, args ...any) (bool, error) {
 	val, _, err := e.Eval(expr, args...)
 	if err != nil {
 		return false, err
@@ -126,7 +164,7 @@ func (e *Evaluable) EvalBool(expr string, args ...interface{}) (bool, error) {
 	return val.Boolean(), nil
 }
 
-func (e *Evaluable) EvalInt(expr string, args ...interface{}) (int, error) {
+func (e *Evaluable) EvalInt(expr string, args ...any) (int, error) {
 	val, _, err := e.Eval(expr, args...)
 	if err != nil {
 		return 0, err
@@ -134,7 +172,7 @@ func (e *Evaluable) EvalInt(expr string, args ...interface{}) (int, error) {
 	return val.Int()
 }
 
-func (e *Evaluable) EvalFloat(expr string, args ...interface{}) (float64, error) {
+func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
 	val, _, err := e.Eval(expr, args...)
 	if err != nil {
 		return 0, err
@@ -142,7 +180,7 @@ func (e *Evaluable) EvalFloat(expr string, args ...interface{}) (float64, error)
 	return val.Float()
 }
 
-func (e *Evaluable) EvalString(expr string, args ...interface{}) (string, error) {
+func (e *Evaluable) EvalString(expr string, args ...any) (string, error) {
 	val, _, err := e.Eval(expr, args...)
 	if err != nil {
 		return "", err
@@ -150,38 +188,38 @@ func (e *Evaluable) EvalString(expr string, args ...interface{}) (string, error)
 	return val.String(), nil
 }
 
-func Eval(expr string, args ...interface{}) (Value, []string, error) {
+func Eval(expr string, args ...any) (Value, []string, error) {
 	return Full().Eval(expr, args...)
 }
 
-func EvalBool(expr string, args ...interface{}) (bool, error) {
+func EvalBool(expr string, args ...any) (bool, error) {
 	return Full().EvalBool(expr, args...)
 }
 
-func EvalInt(expr string, args ...interface{}) (int, error) {
+func EvalInt(expr string, args ...any) (int, error) {
 	return Full().EvalInt(expr, args...)
 }
 
-func EvalFloat(expr string, args ...interface{}) (float64, error) {
+func EvalFloat(expr string, args ...any) (float64, error) {
 	return Full().EvalFloat(expr, args...)
 }
 
-func EvalString(expr string, args ...interface{}) (string, error) {
+func EvalString(expr string, args ...any) (string, error) {
 	return Full().EvalString(expr, args...)
 }
 
-// parseArgs parses the arguments to the evaluable function. supports map[string]interface{} or map[string]otherType
-func parseArgs(args ...interface{}) (map[string]interface{}, error) {
+// parseArgs parses the arguments to the evaluable function. supports map[string]any or map[string]otherType
+func parseArgs(args ...any) (map[string]any, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
-	pArgs := make(map[string]interface{})
+	pArgs := make(map[string]any)
 	for _, arg := range args {
 		if arg == nil {
 			continue
 		}
 		switch v := arg.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			for k, v := range v {
 				pArgs[k] = v
 			}

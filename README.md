@@ -38,7 +38,7 @@ custom comparator: max(1,2,3) > 1
 ```go
 func TestFunc(t *testing.T) {
 	val, err := Full(
-		WithFunc("max", func(args ...interface{}) (interface{}, error) {
+		WithFunc("max", func(args ...any) (any, error) {
 			if len(args) == 0 {
 				return 0, nil
 			}
@@ -65,7 +65,7 @@ func TestFunc(t *testing.T) {
 			}
 			return val, nil
 		}),
-	).EvalFloat(`max(1,2,3,a)`, map[string]interface{}{"a": float64(6)})
+	).EvalFloat(`max(1,2,3,a)`, map[string]any{"a": float64(6)})
 	if err != nil {
 		t.Fatalf("Eval() error = %v", err)
 	}

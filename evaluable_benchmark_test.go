@@ -5,7 +5,7 @@ import (
 )
 
 /*
-  Benchmarks the bare-minimum evaluation time
+Benchmarks the bare-minimum evaluation time
 */
 func BenchmarkEvaluationSingle(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -20,7 +20,7 @@ func BenchmarkEvaluationSingle(b *testing.B) {
 }
 
 /*
-  Benchmarks evaluation times of literals (no variables, no modifiers)
+Benchmarks evaluation times of literals (no variables, no modifiers)
 */
 func BenchmarkEvaluationNumericLiteral(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -35,7 +35,7 @@ func BenchmarkEvaluationNumericLiteral(b *testing.B) {
 }
 
 /*
-  Benchmarks evaluation times of literals with modifiers
+Benchmarks evaluation times of literals with modifiers
 */
 func BenchmarkEvaluationLiteralModifiers(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -50,7 +50,7 @@ func BenchmarkEvaluationLiteralModifiers(b *testing.B) {
 }
 
 func BenchmarkEvaluationParameter(b *testing.B) {
-	parameters := map[string]interface{}{
+	parameters := map[string]any{
 		"requests_made": 99.0,
 	}
 	for i := 0; i < b.N; i++ {
@@ -65,10 +65,10 @@ func BenchmarkEvaluationParameter(b *testing.B) {
 }
 
 /*
-  Benchmarks evaluation times of parameters
+Benchmarks evaluation times of parameters
 */
 func BenchmarkEvaluationParameters(b *testing.B) {
-	parameters := map[string]interface{}{
+	parameters := map[string]any{
 		"requests_made":      99.0,
 		"requests_succeeded": 90.0,
 	}
@@ -85,10 +85,10 @@ func BenchmarkEvaluationParameters(b *testing.B) {
 }
 
 /*
-  Benchmarks evaluation times of parameters + literals with modifiers
+Benchmarks evaluation times of parameters + literals with modifiers
 */
 func BenchmarkEvaluationParametersModifiers(b *testing.B) {
-	parameters := map[string]interface{}{
+	parameters := map[string]any{
 		"requests_made":      99.0,
 		"requests_succeeded": 90.0,
 	}
@@ -105,10 +105,10 @@ func BenchmarkEvaluationParametersModifiers(b *testing.B) {
 }
 
 /*
-  Benchmarks the ludicrously-unlikely worst-case expression,
-  one which uses all features.
-  This is largely a canary benchmark to make sure that any syntax additions don't
-  unnecessarily bloat the evaluation time.
+Benchmarks the ludicrously-unlikely worst-case expression,
+one which uses all features.
+This is largely a canary benchmark to make sure that any syntax additions don't
+unnecessarily bloat the evaluation time.
 */
 func BenchmarkComplexExpression(b *testing.B) {
 	expressionString := "2 > 1 &&" +
@@ -116,7 +116,7 @@ func BenchmarkComplexExpression(b *testing.B) {
 		"date('2014-01-20') < date('Wed Jul  8 23:07:35 MDT 2015') && " +
 		"$.['escapedVariable name with spaces'] >= $.['unescaped-variableName'] &&" +
 		"modifierTest + 1000 / 2 > (80 * 100 % 2)"
-	parameters := map[string]interface{}{
+	parameters := map[string]any{
 		"escapedVariable name with spaces": 99.0,
 		"unescaped-variableName":           90.0,
 		"modifierTest":                     5.0,
@@ -135,7 +135,7 @@ func BenchmarkComplexExpression(b *testing.B) {
 
 func BenchmarkRegexExpression(b *testing.B) {
 	expressionString := "(foo !~ bar) && ('foobar' =~ oba)"
-	parameters := map[string]interface{}{
+	parameters := map[string]any{
 		"foo": "foo",
 		"bar": "bar",
 		"oba": ".*oba.*",
@@ -154,7 +154,7 @@ func BenchmarkRegexExpression(b *testing.B) {
 
 func BenchmarkFunc(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _, err := Full().Eval(`now() < date("2022-05-02 00:00:00") && strlen(abc) == 3`, map[string]interface{}{"abc": "abc"})
+		_, _, err := Full().Eval(`now() < date("2022-05-02 00:00:00") && strlen(abc) == 3`, map[string]any{"abc": "abc"})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -163,7 +163,7 @@ func BenchmarkFunc(b *testing.B) {
 
 func BenchmarkJSON(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		val, err := EvalBool(`$["a.b.0"] > 5`, map[string]interface{}{"a": map[string]interface{}{"b": []int{7, 8}}})
+		val, err := EvalBool(`$["a.b.0"] > 5`, map[string]any{"a": map[string]any{"b": []int{7, 8}}})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -175,7 +175,7 @@ func BenchmarkJSON(b *testing.B) {
 
 func BenchmarkNested(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		val, err := EvalBool(`a.b[0] > 5`, map[string]interface{}{"a": map[string]interface{}{"b": []int{7, 8}}})
+		val, err := EvalBool(`a.b[0] > 5`, map[string]any{"a": map[string]any{"b": []int{7, 8}}})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -187,7 +187,7 @@ func BenchmarkNested(b *testing.B) {
 
 func BenchmarkSpecial(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		val, err := EvalString(`$.["foo bar"]`, map[string]interface{}{"foo bar": "baz"})
+		val, err := EvalString(`$.["foo bar"]`, map[string]any{"foo bar": "baz"})
 		if err != nil {
 			b.Fatal(err)
 		}

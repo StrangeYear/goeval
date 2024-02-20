@@ -6,10 +6,10 @@ package goeval
 %union {
   name string
   val Value
-  vals []interface{}
+  vals []any
 }
 
-%type <val> start cond expr rel nested
+%type <val> start cond expr rel nested quote
 %type <vals> params
 
 %token <val> VALUE EQ NEQ GTE LTE RE NRE AND OR NC IN
@@ -32,10 +32,6 @@ expr:
     {
         $$ = $1
     }
-    | '(' cond ')'
-    {
-        $$ = $2
-    }
     | '[' params ']'
     {
         $$ = NewValue("", $2)
@@ -52,11 +48,44 @@ expr:
 	}
 	$$ = NewValue("", res)
     }
+    | quote
     | nested
-    {
-	$$ = $1
-    }
 ;
+
+quote:
+    '(' cond ')'
+    {
+        $$ = $2
+    }
+    | quote IDENTIFIER
+    {
+	val := SelectValue($1.val, $2)
+	name := $1.name + "." + $2
+	$$ = NewValue(name, val)
+    }
+    | quote '[' expr ']'
+    {
+	val := SelectValue($1.val, $3.String())
+	name := __yyfmt__.Sprintf("%s[%#v]", $1.name, $3.val)
+	$$ = NewValue(name, val)
+    }
+    | quote '(' params ')'
+    {
+        funcValue := toFunc($1.val)
+	val, err := funcValue($3...)
+	if err != nil {
+	    panic(err)
+	}
+	name := $1.name + "("
+	for _, v := range $3 {
+	   name += __yyfmt__.Sprintf("%#v, ", v)
+	}
+	if name[len(name)-2] == ',' {
+	    name = name[:len(name)-2]
+	}
+	name += ")"
+	$$ = NewValue(name, val)
+    }
 
 nested:
     IDENTIFIER
@@ -96,11 +125,11 @@ nested:
 
 params:
     {
-	$$ = []interface{}{}
+	$$ = []any{}
     }
     | expr
     {
-	$$ = []interface{}{$1.val}
+	$$ = []any{$1.val}
     }
     | params ',' expr
     {

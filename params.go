@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-func SelectValue(value interface{}, key string) interface{} {
+func SelectValue(value any, key string) any {
 	if value == nil {
 		return nil
 	}
@@ -42,6 +42,8 @@ func SelectValue(value interface{}, key string) interface{} {
 		if method.IsValid() {
 			return method.Interface()
 		}
+	default:
+		return nil
 	}
 
 	return nil
@@ -54,7 +56,7 @@ func resolvePotentialPointer(value reflect.Value) reflect.Value {
 	return value
 }
 
-func reflectConvertTo(k reflect.Kind, value interface{}) (interface{}, bool) {
+func reflectConvertTo(k reflect.Kind, value any) (any, bool) {
 	switch k {
 	case reflect.String:
 		return NewValue("", value).String(), true
@@ -110,6 +112,8 @@ func reflectConvertTo(k reflect.Kind, value interface{}) (interface{}, bool) {
 		if i, err := NewValue("", value).Int(); err == nil && i > 0 {
 			return uint64(i), true
 		}
+	default:
+		return nil, false
 	}
 	return nil, false
 }

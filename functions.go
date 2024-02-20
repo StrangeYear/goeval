@@ -8,24 +8,24 @@ import (
 	"reflect"
 )
 
-type function func(arguments ...interface{}) (interface{}, error)
+type function func(arguments ...any) (any, error)
 
-func toFunc(f interface{}) function {
-	if f, ok := f.(func(arguments ...interface{}) (interface{}, error)); ok {
+func toFunc(f any) function {
+	if f, ok := f.(func(arguments ...any) (any, error)); ok {
 		return f
 	}
 
 	fun := reflect.ValueOf(f)
 	t := fun.Type()
-	return func(args ...interface{}) (interface{}, error) {
-		var v interface{}
+	return func(args ...any) (any, error) {
+		var v any
 		in, err := createCallArguments(t, args)
 		if err != nil {
 			return nil, err
 		}
 		out := fun.Call(in)
 
-		r := make([]interface{}, len(out))
+		r := make([]any, len(out))
 		for i, e := range out {
 			r[i] = e.Interface()
 		}
@@ -52,7 +52,7 @@ func toFunc(f interface{}) function {
 	}
 }
 
-func createCallArguments(t reflect.Type, args []interface{}) ([]reflect.Value, error) {
+func createCallArguments(t reflect.Type, args []any) ([]reflect.Value, error) {
 	variadic := t.IsVariadic()
 	numIn := t.NumIn()
 

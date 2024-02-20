@@ -24,7 +24,7 @@ type lexer struct {
     p, pe, cs int
     ts, te, act int
     answer Value
-    kv map[string]interface{}
+    kv map[string]any
     err error
     tokens []string
     fns map[string]Func
@@ -36,7 +36,7 @@ func (lex *lexer) token() string {
 	return string(lex.data[lex.ts:lex.te])
 }
 
-func newLexer(data []byte, kv map[string]interface{}, fns map[string]Func) *lexer {
+func newLexer(data []byte, kv map[string]any, fns map[string]Func) *lexer {
 	lex := &lexer{
 			data: data,
 			pe: len(data),
