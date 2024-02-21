@@ -6,6 +6,7 @@ package goeval
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -128,6 +129,19 @@ var full = NewEvaluable(
 			return nil, fmt.Errorf("duration() expects a valid unit argument")
 		}
 	}),
+	WithFunc("float", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("float() expects exactly one argument")
+		}
+		switch arg := args[0].(type) {
+		case string:
+			return strconv.ParseFloat(arg, 64)
+		case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+			return arg, nil
+		default:
+			return nil, fmt.Errorf("float() expects a string or a number argument")
+		}
+	}),
 )
 
 func Full(opts ...Option) *Evaluable {
@@ -169,7 +183,7 @@ func (e *Evaluable) EvalInt(expr string, args ...any) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Int()
+	return val.Int(), nil
 }
 
 func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
@@ -177,7 +191,7 @@ func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Float()
+	return val.Float(), nil
 }
 
 func (e *Evaluable) EvalString(expr string, args ...any) (string, error) {

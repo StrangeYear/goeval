@@ -139,67 +139,67 @@ params:
 rel:
   expr
 | '!' rel {
-        $$ = $2.NOT()
+        $$ = $2.Not()
 }
 | rel EQ rel {
-        $$ = $1.EQ($3)
+        $$ = $1.Eq($3)
 }
 | rel NEQ rel {
-        $$ = $1.NEQ($3)
+        $$ = $1.Neq($3)
 }
 | rel GTE rel {
-        $$ = $1.GTE($3)
+        $$ = $1.Gte($3)
 }
 | rel LTE rel {
-        $$ = $1.LTE($3)
+        $$ = $1.Lte($3)
 }
 | rel RE rel {
-        $$ = $1.RE($3)
+        $$ = $1.Re($3)
 }
 | rel NRE rel {
-        $$ = $1.NRE($3)
+        $$ = $1.Nre($3)
 }
 | rel NC rel {
-        $$ = $1.NC($3)
+        $$ = $1.Nc($3)
 }
 | rel IN rel {
-        $$ = $1.IN($3)
+        $$ = $1.In($3)
 }
 | rel '<' rel {
-        $$ = $1.LT($3)
+        $$ = $1.Lt($3)
 }
 | rel '>' rel {
-        $$ = $1.GT($3)
+        $$ = $1.Gt($3)
 }
 | rel '=' rel {
-        $$ = $1.MATCH($3)
+        $$ = $1.Match($3)
 }
 | rel '+' rel {
-        $$ = $1.ADD($3)
+        $$ = $1.Add($3)
 }
 | rel '-' rel {
-        $$ = $1.SUB($3)
+        $$ = $1.Sub($3)
 }
 | rel '*' rel {
-        $$ = $1.MULTI($3)
+        $$ = $1.Multi($3)
 }
 | rel '/' rel {
-        $$ = $1.DIV($3)
+        $$ = $1.Div($3)
 }
 | rel '%' rel {
-        $$ = $1.MOD($3)
+        $$ = $1.Mod($3)
 }
 ;
 
 cond:
   rel
 | cond AND cond {
-	$$ = $1.AND($3)
+	$$ = $1.And($3)
 }
 | cond OR cond {
-	$$ = $1.OR($3)
+	$$ = $1.Or($3)
 }
 | cond '?' cond ':' cond {
-    	$$ = $1.TERNARY($3, $5)
+    	$$ = $1.Ternary($3, $5)
   }
 ;

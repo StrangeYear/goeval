@@ -642,121 +642,121 @@ yydefault:
 		yyDollar = yyS[yypt-2 : yypt+1]
 //line parser.y:141
 		{
-			yyVAL.val = yyDollar[2].val.NOT()
+			yyVAL.val = yyDollar[2].val.Not()
 		}
 	case 20:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:144
 		{
-			yyVAL.val = yyDollar[1].val.EQ(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Eq(yyDollar[3].val)
 		}
 	case 21:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:147
 		{
-			yyVAL.val = yyDollar[1].val.NEQ(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Neq(yyDollar[3].val)
 		}
 	case 22:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:150
 		{
-			yyVAL.val = yyDollar[1].val.GTE(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Gte(yyDollar[3].val)
 		}
 	case 23:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:153
 		{
-			yyVAL.val = yyDollar[1].val.LTE(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Lte(yyDollar[3].val)
 		}
 	case 24:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:156
 		{
-			yyVAL.val = yyDollar[1].val.RE(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Re(yyDollar[3].val)
 		}
 	case 25:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:159
 		{
-			yyVAL.val = yyDollar[1].val.NRE(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Nre(yyDollar[3].val)
 		}
 	case 26:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:162
 		{
-			yyVAL.val = yyDollar[1].val.NC(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Nc(yyDollar[3].val)
 		}
 	case 27:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:165
 		{
-			yyVAL.val = yyDollar[1].val.IN(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.In(yyDollar[3].val)
 		}
 	case 28:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:168
 		{
-			yyVAL.val = yyDollar[1].val.LT(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Lt(yyDollar[3].val)
 		}
 	case 29:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:171
 		{
-			yyVAL.val = yyDollar[1].val.GT(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Gt(yyDollar[3].val)
 		}
 	case 30:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:174
 		{
-			yyVAL.val = yyDollar[1].val.MATCH(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Match(yyDollar[3].val)
 		}
 	case 31:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:177
 		{
-			yyVAL.val = yyDollar[1].val.ADD(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Add(yyDollar[3].val)
 		}
 	case 32:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:180
 		{
-			yyVAL.val = yyDollar[1].val.SUB(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Sub(yyDollar[3].val)
 		}
 	case 33:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:183
 		{
-			yyVAL.val = yyDollar[1].val.MULTI(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Multi(yyDollar[3].val)
 		}
 	case 34:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:186
 		{
-			yyVAL.val = yyDollar[1].val.DIV(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Div(yyDollar[3].val)
 		}
 	case 35:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:189
 		{
-			yyVAL.val = yyDollar[1].val.MOD(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Mod(yyDollar[3].val)
 		}
 	case 37:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:196
 		{
-			yyVAL.val = yyDollar[1].val.AND(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.And(yyDollar[3].val)
 		}
 	case 38:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:199
 		{
-			yyVAL.val = yyDollar[1].val.OR(yyDollar[3].val)
+			yyVAL.val = yyDollar[1].val.Or(yyDollar[3].val)
 		}
 	case 39:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line parser.y:202
 		{
-			yyVAL.val = yyDollar[1].val.TERNARY(yyDollar[3].val, yyDollar[5].val)
+			yyVAL.val = yyDollar[1].val.Ternary(yyDollar[3].val, yyDollar[5].val)
 		}
 	}
 	goto yystack /* stack new state and value */

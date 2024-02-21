@@ -2,9 +2,7 @@ package goeval
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -40,7 +38,6 @@ const (
 	Struct
 	Map
 	Interface
-	Error
 )
 
 type Value struct {
@@ -110,7 +107,7 @@ func NewValue(name string, v any) Value {
 	default:
 		rv := reflect.ValueOf(v)
 		if rv.Kind() == reflect.Ptr {
-			rv = rv.Elem()
+			return NewValue(name, rv.Elem().Interface())
 		}
 
 		switch rv.Kind() {
@@ -127,53 +124,43 @@ func NewValue(name string, v any) Value {
 	return res
 }
 
-func (v Value) Float() (float64, error) {
+func (v Value) Float() float64 {
 	switch v.vType {
-	case Number:
-		if f, ok := v.val.(float64); ok {
-			return f, nil
+	case Boolean:
+		if v.Boolean() {
+			return 1
 		}
-		fallthrough
+		return 0
+	case Number:
+		return v.val.(float64)
 	case String:
 		f, err := strconv.ParseFloat(v.String(), 64)
 		if err != nil {
-			return 0, err
+			panic(fmt.Errorf("convert value to float error: %s, name: %s", err, v.name))
 		}
-		return f, nil
+		return f
 	case Time:
-		return float64(v.val.(time.Time).Unix()), nil
+		return float64(v.val.(time.Time).Unix())
 	case Duration:
-		return float64(v.val.(time.Duration)), nil
+		return float64(v.val.(time.Duration))
 	case Json:
-		return v.val.(gjson.Result).Float(), nil
+		return v.val.(gjson.Result).Float()
 	case Nil:
-		if v.name == "" {
-			return 0, errors.New("can not convert nil value to number")
-		}
-		return 0, fmt.Errorf("variable '%s' is nil, can not convert to number", v.name)
-	case Error:
-		return 0, fmt.Errorf("%v", v.val)
+		return 0
 	default:
-		if v.name == "" {
-			return 0, fmt.Errorf("unknown value type of %#v", v.val)
-		}
-		return 0, fmt.Errorf("unknow value type of variable '%s'", v.name)
+		panic(fmt.Errorf("invalid value type of variable '%s' for parse float", v.name))
 	}
 }
 
-func (v Value) Int() (int, error) {
-	val, err := v.Float()
-	if err != nil {
-		return 0, err
-	}
-	return int(val), nil
+func (v Value) Int() int {
+	return int(v.Float())
 }
 
-func (v Value) Array() ([]any, error) {
+func (v Value) Array() []any {
 	switch v.vType {
 	case Array:
 		if val, ok := v.val.([]any); ok {
-			return val, nil
+			return val
 		}
 		rv := reflect.ValueOf(v.val)
 		if rv.Kind() == reflect.Ptr {
@@ -183,35 +170,30 @@ func (v Value) Array() ([]any, error) {
 		for i := 0; i < rv.Len(); i++ {
 			val = append(val, rv.Index(i).Interface())
 		}
-		return val, nil
+		return val
 	case Json:
 		array := v.val.(gjson.Result).Array()
 		results := make([]any, len(array))
 		for i, r := range array {
 			results[i] = r.Value()
 		}
-		return results, nil
+		return results
 	case String:
 		s := v.String()
 		if s == "" {
-			return nil, nil
+			return nil
 		}
 		if s[0] != '[' || s[len(s)-1] != ']' {
-			return nil, fmt.Errorf("value '%s' is not array", s)
+			panic(fmt.Errorf("value '%s' is not array", s))
 		}
 		res := make([]any, 0)
 		err := json.Unmarshal([]byte(s), &res)
 		if err != nil {
-			return nil, err
+			panic(fmt.Errorf("parse array error: %s, name: %s", err, v.name))
 		}
-		return res, nil
-	case Error:
-		return nil, fmt.Errorf("%v", v.val)
+		return res
 	default:
-		if v.name == "" {
-			return nil, fmt.Errorf("unknown value [%v] type for parse array", v.val)
-		}
-		return nil, fmt.Errorf("unknow value [%v] type of variable '%s' for parse array", v.val, v.name)
+		panic(fmt.Errorf("invalid value [%v] type of variable '%s' for parse array", v.val, v.name))
 	}
 }
 
@@ -236,7 +218,7 @@ func (v Value) Boolean() bool {
 		return v.val.(bool)
 	case Json:
 		return v.val.(gjson.Result).Bool()
-	case Error, Nil:
+	case Nil:
 		return false
 	default:
 		s := strings.ToLower(fmt.Sprintf("%v", v.val))
@@ -244,57 +226,38 @@ func (v Value) Boolean() bool {
 	}
 }
 
-func (v Value) Error() error {
-	if v.vType == Error {
-		return fmt.Errorf("%v", v.val)
-	}
-	return nil
-}
-
-func (v Value) NOT() Value {
-	if v.vType == Error {
-		return v
-	}
+func (v Value) Not() Value {
 	return Value{
 		val:   !v.Boolean(),
 		vType: Boolean,
 	}
 }
 
-func (v Value) AND(v2 Value) Value {
-	if v.vType == Error {
-		return v
-	}
+func (v Value) And(v2 Value) Value {
 	if !v.Boolean() {
 		return v
 	}
 	return v2
 }
 
-func (v Value) OR(v2 Value) Value {
-	if v.vType == Error {
-		return v
-	}
+func (v Value) Or(v2 Value) Value {
 	if v.Boolean() {
 		return v
 	}
 	return v2
 }
 
-func (v Value) EQ(v2 Value) Value {
+func (v Value) Eq(v2 Value) Value {
 	return Value{
 		val:   v.String() == v2.String(),
 		vType: Boolean,
 	}
 }
 
-func (v Value) RE(v2 Value) Value {
+func (v Value) Re(v2 Value) Value {
 	exp, err := compileRegexp(v2.String())
 	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
+		panic(fmt.Errorf("compile regexp error: %s, name: %s", err, v.name))
 	}
 	return Value{
 		val:   exp.MatchString(v.String()),
@@ -302,13 +265,10 @@ func (v Value) RE(v2 Value) Value {
 	}
 }
 
-func (v Value) NRE(v2 Value) Value {
+func (v Value) Nre(v2 Value) Value {
 	exp, err := compileRegexp(v2.String())
 	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
+		panic(fmt.Errorf("compile regexp error: %s, name: %s", err, v.name))
 	}
 
 	return Value{
@@ -317,102 +277,46 @@ func (v Value) NRE(v2 Value) Value {
 	}
 }
 
-func (v Value) NEQ(v2 Value) Value {
-	return v.EQ(v2).NOT()
+func (v Value) Neq(v2 Value) Value {
+	return v.Eq(v2).Not()
 }
 
-func (v Value) GT(v2 Value) Value {
-	left, err := v.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
-	right, err := v2.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
+func (v Value) Gt(v2 Value) Value {
 	return Value{
-		val:   left > right,
+		val:   v.Float() > v2.Float(),
 		vType: Boolean,
 	}
 }
 
-func (v Value) GTE(v2 Value) Value {
-	left, err := v.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
-	right, err := v2.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
+func (v Value) Gte(v2 Value) Value {
 	return Value{
-		val:   left >= right,
+		val:   v.Float() >= v2.Float(),
 		vType: Boolean,
 	}
 }
 
-func (v Value) LT(v2 Value) Value {
-	left, err := v.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
-	right, err := v2.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
+func (v Value) Lt(v2 Value) Value {
 	return Value{
-		val:   left < right,
+		val:   v.Float() < v2.Float(),
 		vType: Boolean,
 	}
 }
 
-func (v Value) LTE(v2 Value) Value {
-	left, err := v.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
-	right, err := v2.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
+func (v Value) Lte(v2 Value) Value {
 	return Value{
-		val:   left <= right,
+		val:   v.Float() <= v2.Float(),
 		vType: Boolean,
 	}
 }
 
-func (v Value) MATCH(v2 Value) Value {
+func (v Value) Match(v2 Value) Value {
 	return Value{
 		val:   simpleMatch(v2.String(), v.String()),
 		vType: Boolean,
 	}
 }
 
-func (v Value) ADD(v2 Value) Value {
+func (v Value) Add(v2 Value) Value {
 	switch {
 	case v.vType == Time && v2.vType == Duration:
 		return Value{
@@ -430,10 +334,8 @@ func (v Value) ADD(v2 Value) Value {
 			vType: Duration,
 		}
 	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
-		f, _ := v.Float()
-		f2, _ := v2.Float()
 		return Value{
-			val:   time.Duration(f) + time.Duration(f2),
+			val:   time.Duration(v.Float()) + time.Duration(v2.Float()),
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
@@ -443,29 +345,30 @@ func (v Value) ADD(v2 Value) Value {
 			val:   f + f2,
 			vType: Number,
 		}
-	default:
-		f, err := v.Float()
-		if err != nil {
-			return Value{
-				val:   v.String() + v2.String(),
-				vType: String,
-			}
-		}
-		f2, err := v2.Float()
-		if err != nil {
-			return Value{
-				val:   v.String() + v2.String(),
-				vType: String,
-			}
-		}
+	case v.vType == Array && v2.vType == Array:
 		return Value{
-			val:   f + f2,
+			val:   append(v.Array(), v2.Array()...),
+			vType: Array,
+		}
+	case v.vType == Array:
+		return Value{
+			val:   append(v.Array(), v2.val),
+			vType: Array,
+		}
+	case v2.vType == Array:
+		return Value{
+			val:   append(v2.Array(), v.val),
+			vType: Array,
+		}
+	default:
+		return Value{
+			val:   v.String() + v2.String(),
 			vType: Number,
 		}
 	}
 }
 
-func (v Value) SUB(v2 Value) Value {
+func (v Value) Sub(v2 Value) Value {
 	switch {
 	case v.vType == Time && v2.vType == Duration:
 		return Value{
@@ -480,10 +383,8 @@ func (v Value) SUB(v2 Value) Value {
 			vType: Duration,
 		}
 	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
-		f, _ := v.Float()
-		f2, _ := v2.Float()
 		return Value{
-			val:   time.Duration(f) - time.Duration(f2),
+			val:   time.Duration(v.Float()) - time.Duration(v2.Float()),
 			vType: Duration,
 		}
 	case v.vType == Time && v2.vType == Time:
@@ -498,29 +399,48 @@ func (v Value) SUB(v2 Value) Value {
 			val:   f - f2,
 			vType: Number,
 		}
-	default:
-		f, err := v.Float()
-		if err != nil {
-			return Value{
-				val:   err.Error(),
-				vType: Error,
-			}
-		}
-		f2, err := v2.Float()
-		if err != nil {
-			return Value{
-				val:   err.Error(),
-				vType: Error,
+	case v.vType == Array && v2.vType == Array:
+		res := make([]any, 0, len(v.Array()))
+		for _, item := range v.Array() {
+			if !v2.In(NewValue("", item)).Boolean() {
+				res = append(res, item)
 			}
 		}
 		return Value{
-			val:   f - f2,
+			val:   res,
+			vType: Array,
+		}
+	case v.vType == Array:
+		res := make([]any, 0, len(v.Array()))
+		for _, item := range v.Array() {
+			if !v2.Eq(NewValue("", item)).Boolean() {
+				res = append(res, item)
+			}
+		}
+		return Value{
+			val:   res,
+			vType: Array,
+		}
+	case v2.vType == Array:
+		res := make([]any, 0, len(v2.Array()))
+		for _, item := range v2.Array() {
+			if !v.Eq(NewValue("", item)).Boolean() {
+				res = append(res, item)
+			}
+		}
+		return Value{
+			val:   res,
+			vType: Array,
+		}
+	default:
+		return Value{
+			val:   strings.ReplaceAll(v.String(), v2.String(), ""),
 			vType: Number,
 		}
 	}
 }
 
-func (v Value) MULTI(v2 Value) Value {
+func (v Value) Multi(v2 Value) Value {
 	switch {
 	case v.vType == Duration && v2.vType == Duration:
 		return Value{
@@ -528,11 +448,8 @@ func (v Value) MULTI(v2 Value) Value {
 			vType: Duration,
 		}
 	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
-		f, _ := v.Float()
-		f2, _ := v2.Float()
-		log.Println(f, f2)
 		return Value{
-			val:   time.Duration(f) * time.Duration(f2),
+			val:   time.Duration(v.Float()) * time.Duration(v2.Float()),
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
@@ -543,28 +460,11 @@ func (v Value) MULTI(v2 Value) Value {
 			vType: Number,
 		}
 	default:
-		f, err := v.Float()
-		if err != nil {
-			return Value{
-				val:   err.Error(),
-				vType: Error,
-			}
-		}
-		f2, err := v2.Float()
-		if err != nil {
-			return Value{
-				val:   err.Error(),
-				vType: Error,
-			}
-		}
-		return Value{
-			val:   f * f2,
-			vType: Number,
-		}
+		panic(fmt.Errorf("invalid value [%v] type of variable '%s' for multiply", v.val, v.name))
 	}
 }
 
-func (v Value) DIV(v2 Value) Value {
+func (v Value) Div(v2 Value) Value {
 	switch {
 	case v.vType == Duration && v2.vType == Duration:
 		return Value{
@@ -572,10 +472,8 @@ func (v Value) DIV(v2 Value) Value {
 			vType: Duration,
 		}
 	case (v.vType == Duration && v2.vType == Number) || (v.vType == Number && v2.vType == Duration):
-		f, _ := v.Float()
-		f2, _ := v2.Float()
 		return Value{
-			val:   time.Duration(f) / time.Duration(f2),
+			val:   time.Duration(v.Float()) / time.Duration(v2.Float()),
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
@@ -586,49 +484,18 @@ func (v Value) DIV(v2 Value) Value {
 			vType: Number,
 		}
 	default:
-		f, err := v.Float()
-		if err != nil {
-			return Value{
-				val:   err.Error(),
-				vType: Error,
-			}
-		}
-		f2, err := v2.Float()
-		if err != nil {
-			return Value{
-				val:   err.Error(),
-				vType: Error,
-			}
-		}
-		return Value{
-			val:   f / f2,
-			vType: Number,
-		}
+		panic(fmt.Errorf("invalid value [%v] type of variable '%s' for divide", v.val, v.name))
 	}
 }
 
-func (v Value) MOD(v2 Value) Value {
-	f, err := v.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
-	f2, err := v2.Float()
-	if err != nil {
-		return Value{
-			val:   err.Error(),
-			vType: Error,
-		}
-	}
+func (v Value) Mod(v2 Value) Value {
 	return Value{
-		val:   float64(int(f) % int(f2)),
+		val:   float64(v.Int() % v2.Int()),
 		vType: Number,
 	}
 }
 
-func (v Value) NC(v2 Value) Value {
+func (v Value) Nc(v2 Value) Value {
 	if v.vType == Nil ||
 		(v.vType == Boolean && !v.Boolean()) ||
 		(v.vType == String && len(v.String()) == 0) ||
@@ -639,23 +506,26 @@ func (v Value) NC(v2 Value) Value {
 	return v
 }
 
-func (v Value) IN(v2 Value) Value {
-	array, err := v2.Array()
-	if err != nil {
+func (v Value) In(v2 Value) Value {
+	switch v2.vType {
+	case String:
 		return Value{
-			val:   err.Error(),
-			vType: Error,
+			val:   strings.Contains(v2.String(), v.String()),
+			vType: Boolean,
 		}
-	}
-	for _, item := range array {
-		if v.EQ(NewValue("", item)).Boolean() {
-			return trueValue
+	case Array:
+		for _, item := range v2.Array() {
+			if v.Eq(NewValue("", item)).Boolean() {
+				return trueValue
+			}
 		}
+		return falseValue
+	default:
+		panic(fmt.Errorf("invalid value [%v] type of variable '%s' for in", v2.val, v2.name))
 	}
-	return falseValue
 }
 
-func (v Value) TERNARY(v2 Value, v3 Value) Value {
+func (v Value) Ternary(v2 Value, v3 Value) Value {
 	if v.Boolean() {
 		return v2
 	}

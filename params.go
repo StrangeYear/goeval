@@ -29,7 +29,7 @@ func SelectValue(value any, key string) any {
 			return vvElem.Interface()
 		}
 	case reflect.Slice, reflect.Array, reflect.String:
-		if i, err := NewValue("", key).Int(); err == nil && i >= 0 && vv.Len() > i {
+		if i := NewValue("", key).Int(); i >= 0 && vv.Len() > i {
 			vvElem = resolvePotentialPointer(vv.Index(i))
 			return vvElem.Interface()
 		}
@@ -63,57 +63,32 @@ func reflectConvertTo(k reflect.Kind, value any) (any, bool) {
 	case reflect.Interface:
 		return value, true
 	case reflect.Int:
-		if i, err := NewValue("", value).Int(); err == nil {
-			return i, true
-		}
+		return NewValue("", value).Int(), true
 	case reflect.Float64:
-		if f, err := NewValue("", value).Float(); err == nil {
-			return f, true
-		}
+		return NewValue("", value).Float(), true
 	case reflect.Float32:
-		if f, err := NewValue("", value).Float(); err == nil {
-			return float32(f), true
-		}
+		return float32(NewValue("", value).Float()), true
 	case reflect.Bool:
 		return NewValue("", value).Boolean(), true
 	case reflect.Int8:
-		if i, err := NewValue("", value).Int(); err == nil {
-			return int8(i), true
-		}
+		return int8(NewValue("", value).Int()), true
 	case reflect.Int16:
-		if i, err := NewValue("", value).Int(); err == nil {
-			return int16(i), true
-		}
+		return int16(NewValue("", value).Int()), true
 	case reflect.Int32:
-		if i, err := NewValue("", value).Int(); err == nil {
-			return int32(i), true
-		}
+		return int32(NewValue("", value).Int()), true
 	case reflect.Int64:
-		if i, err := NewValue("", value).Int(); err == nil {
-			return int64(i), true
-		}
+		return int64(NewValue("", value).Int()), true
 	case reflect.Uint:
-		if i, err := NewValue("", value).Int(); err == nil && i > 0 {
-			return uint(i), true
-		}
+		return uint(NewValue("", value).Int()), true
 	case reflect.Uint8:
-		if i, err := NewValue("", value).Int(); err == nil && i > 0 {
-			return uint8(i), true
-		}
+		return uint8(NewValue("", value).Int()), true
 	case reflect.Uint16:
-		if i, err := NewValue("", value).Int(); err == nil && i > 0 {
-			return uint16(i), true
-		}
+		return uint16(NewValue("", value).Int()), true
 	case reflect.Uint32:
-		if i, err := NewValue("", value).Int(); err == nil && i > 0 {
-			return uint32(i), true
-		}
+		return uint32(NewValue("", value).Int()), true
 	case reflect.Uint64:
-		if i, err := NewValue("", value).Int(); err == nil && i > 0 {
-			return uint64(i), true
-		}
+		return uint64(NewValue("", value).Int()), true
 	default:
 		return nil, false
 	}
-	return nil, false
 }
