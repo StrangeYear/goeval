@@ -133,6 +133,33 @@ func BenchmarkComplexExpression(b *testing.B) {
 	}
 }
 
+func BenchmarkCompiledComplexExpression(b *testing.B) {
+	expressionString := "2 > 1 &&" +
+		"'something' != 'nothing' || " +
+		"date('2014-01-20') < date('Wed Jul  8 23:07:35 MDT 2015') && " +
+		"$.['escapedVariable name with spaces'] >= $.['unescaped-variableName'] &&" +
+		"modifierTest + 1000 / 2 > (80 * 100 % 2)"
+	parameters := map[string]any{
+		"escapedVariable name with spaces": 99.0,
+		"unescaped-variableName":           90.0,
+		"modifierTest":                     5.0,
+	}
+	compiled, err := Compile(expressionString)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := compiled.EvalMapBool(parameters)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !val {
+			b.Fatal("Expected true, got", val)
+		}
+	}
+}
+
 func BenchmarkRegexExpression(b *testing.B) {
 	expressionString := "(foo !~ bar) && ('foobar' =~ oba)"
 	parameters := map[string]any{
@@ -173,9 +200,45 @@ func BenchmarkJSON(b *testing.B) {
 	}
 }
 
+func BenchmarkCompiledJSON(b *testing.B) {
+	compiled, err := Compile(`$["a.b.0"] > 5`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	params := map[string]any{"a": map[string]any{"b": []int{7, 8}}}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := compiled.EvalMapBool(params)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !val {
+			b.Fatal("not true")
+		}
+	}
+}
+
 func BenchmarkNested(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		val, err := EvalBool(`a.b[0] > 5`, map[string]any{"a": map[string]any{"b": []int{7, 8}}})
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !val {
+			b.Fatal("not true")
+		}
+	}
+}
+
+func BenchmarkCompiledNested(b *testing.B) {
+	compiled, err := Compile(`a.b[0] > 5`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	params := map[string]any{"a": map[string]any{"b": []int{7, 8}}}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := compiled.EvalMapBool(params)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -193,6 +256,48 @@ func BenchmarkSpecial(b *testing.B) {
 		}
 		if val != "baz" {
 			b.Fatal("not true")
+		}
+	}
+}
+
+func BenchmarkCompiledRegexExpression(b *testing.B) {
+	compiled, err := Compile("(foo !~ bar) && ('foobar' =~ oba)")
+	if err != nil {
+		b.Fatal(err)
+	}
+	parameters := map[string]any{
+		"foo": "foo",
+		"bar": "bar",
+		"oba": ".*oba.*",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := compiled.EvalMapBool(parameters)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !val {
+			b.Fatal("Expected true, got", val)
+		}
+	}
+}
+
+func BenchmarkCompiledRegexLiteral(b *testing.B) {
+	compiled, err := Compile(`foo =~ "^fo+$"`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	parameters := map[string]any{
+		"foo": "foo",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := compiled.EvalMapBool(parameters)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !val {
+			b.Fatal("Expected true, got", val)
 		}
 	}
 }

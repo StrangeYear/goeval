@@ -16,6 +16,11 @@ func toFunc(f any) function {
 	}
 
 	fun := reflect.ValueOf(f)
+	if !fun.IsValid() || fun.Kind() != reflect.Func {
+		return func(args ...any) (any, error) {
+			return nil, fmt.Errorf("value of type %T is not callable", f)
+		}
+	}
 	t := fun.Type()
 	return func(args ...any) (any, error) {
 		var v any

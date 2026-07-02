@@ -107,7 +107,21 @@ func NewValue(name string, v any) Value {
 	default:
 		rv := reflect.ValueOf(v)
 		if rv.Kind() == reflect.Ptr {
-			return NewValue(name, rv.Elem().Interface())
+			if rv.IsNil() {
+				return res
+			}
+			elem := rv.Elem()
+			switch elem.Kind() {
+			case reflect.Struct:
+				res.vType = Struct
+			case reflect.Map:
+				res.vType = Map
+			case reflect.Array, reflect.Slice:
+				res.vType = Array
+			default:
+				return NewValue(name, elem.Interface())
+			}
+			return res
 		}
 
 		switch rv.Kind() {
@@ -363,7 +377,7 @@ func (v Value) Add(v2 Value) Value {
 	default:
 		return Value{
 			val:   v.String() + v2.String(),
-			vType: Number,
+			vType: String,
 		}
 	}
 }
@@ -435,7 +449,7 @@ func (v Value) Sub(v2 Value) Value {
 	default:
 		return Value{
 			val:   strings.ReplaceAll(v.String(), v2.String(), ""),
-			vType: Number,
+			vType: String,
 		}
 	}
 }
@@ -496,14 +510,28 @@ func (v Value) Mod(v2 Value) Value {
 }
 
 func (v Value) Nc(v2 Value) Value {
-	if v.vType == Nil ||
-		(v.vType == Boolean && !v.Boolean()) ||
-		(v.vType == String && len(v.String()) == 0) ||
-		(v.vType == Number && v.val.(float64) == 0) ||
-		(v.vType == Array && len(v.val.([]any)) == 0) {
+	if isCoalesceEmpty(v) {
 		return v2
 	}
 	return v
+}
+
+func isCoalesceEmpty(v Value) bool {
+	switch v.vType {
+	case Nil:
+		return true
+	case Boolean:
+		return !v.Boolean()
+	case String:
+		return v.String() == ""
+	case Number:
+		return v.val.(float64) == 0
+	case Array:
+		length, err := valueLen(v.val)
+		return err == nil && length == 0
+	default:
+		return false
+	}
 }
 
 func (v Value) In(v2 Value) Value {

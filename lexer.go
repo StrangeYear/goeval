@@ -3,7 +3,6 @@ package goeval
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-//line lexer.go:18
+//line lexer.go:17
 var _expression_actions []byte = []byte{
 	0, 1, 0, 1, 1, 1, 2, 1, 12,
 	1, 13, 1, 14, 1, 15, 1, 16,
@@ -234,34 +233,69 @@ const expression_error int = -1
 
 const expression_en_main int = 43
 
-//line lexer.rl:20
+//line lexer.rl:19
 
 type lexer struct {
-	data        []byte
-	p, pe, cs   int
-	ts, te, act int
-	answer      Value
-	kv          map[string]any
-	err         error
-	tokens      []string
-	fns         map[string]Func
-	once        sync.Once
-	json        gjson.Result
+	data          string
+	p, pe, cs     int
+	ts, te, act   int
+	answer        Value
+	kv            map[string]any
+	err           error
+	tokens        []string
+	collectTokens bool
+	build         bool
+	fns           map[string]Func
+	jsonParsed    bool
+	json          gjson.Result
+}
+
+var lexerPool = sync.Pool{
+	New: func() any {
+		return new(lexer)
+	},
 }
 
 func (lex *lexer) token() string {
-	return string(lex.data[lex.ts:lex.te])
+	return lex.data[lex.ts:lex.te]
 }
 
-func newLexer(data []byte, kv map[string]any, fns map[string]Func) *lexer {
-	lex := &lexer{
-		data: data,
-		pe:   len(data),
-		kv:   kv,
-		fns:  fns,
+func (lex *lexer) position(pos int) (int, int) {
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(lex.data) {
+		pos = len(lex.data)
+	}
+	line := 1
+	column := 1
+	for i := 0; i < pos; i++ {
+		if lex.data[i] == '\n' {
+			line++
+			column = 1
+		} else {
+			column++
+		}
+	}
+	return line, column
+}
+
+func (lex *lexer) errorAt(pos int, format string, args ...any) error {
+	line, column := lex.position(pos)
+	return fmt.Errorf("%s at line %d, column %d", fmt.Sprintf(format, args...), line, column)
+}
+
+func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens bool) *lexer {
+	lex := lexerPool.Get().(*lexer)
+	*lex = lexer{
+		data:          data,
+		pe:            len(data),
+		kv:            kv,
+		fns:           fns,
+		collectTokens: collectTokens,
 	}
 
-//line lexer.go:270
+//line lexer.go:304
 	{
 		lex.cs = expression_start
 		lex.ts = 0
@@ -269,15 +303,20 @@ func newLexer(data []byte, kv map[string]any, fns map[string]Func) *lexer {
 		lex.act = 0
 	}
 
-//line lexer.rl:47
+//line lexer.rl:81
 	return lex
+}
+
+func (lex *lexer) release() {
+	*lex = lexer{}
+	lexerPool.Put(lex)
 }
 
 func (lex *lexer) Lex(out *yySymType) int {
 	eof := lex.pe
 	tok := 0
 
-//line lexer.go:287
+//line lexer.go:326
 	{
 		var _klen int
 		var _trans int
@@ -298,7 +337,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 //line NONE:1
 				lex.ts = (lex.p)
 
-//line lexer.go:307
+//line lexer.go:346
 			}
 		}
 
@@ -374,53 +413,55 @@ func (lex *lexer) Lex(out *yySymType) int {
 				lex.te = (lex.p) + 1
 
 			case 3:
-//line lexer.rl:103
+//line lexer.rl:151
 				lex.act = 1
 			case 4:
-//line lexer.rl:55
+//line lexer.rl:94
 				lex.act = 3
 			case 5:
-//line lexer.rl:133
+//line lexer.rl:183
 				lex.act = 4
 			case 6:
-//line lexer.rl:147
+//line lexer.rl:197
 				lex.act = 14
 			case 7:
-//line lexer.rl:74
+//line lexer.rl:122
 				lex.act = 15
 			case 8:
-//line lexer.rl:89
+//line lexer.rl:137
 				lex.act = 17
 			case 9:
-//line lexer.rl:60
+//line lexer.rl:99
 				lex.act = 18
 			case 10:
-//line lexer.rl:79
+//line lexer.rl:127
 				lex.act = 19
 			case 11:
-//line lexer.rl:156
+//line lexer.rl:206
 				lex.act = 22
 			case 12:
-//line lexer.rl:103
+//line lexer.rl:151
 				lex.te = (lex.p) + 1
 				{
 					tok = VALUE
-					val := string(lex.token())
-					val = strings.ReplaceAll(val, "\\\\", "\\")
-					if val[0] == '"' {
-						val = strings.ReplaceAll(val, "\\\"", "\"")
-					} else if val[0] == '\'' {
-						val = strings.ReplaceAll(val, "\\'", "'")
-					} else if val[0] == '`' {
-						val = strings.ReplaceAll(val, "\\`", "`")
+					val := lex.token()
+					if strings.IndexByte(val, '\\') >= 0 {
+						val = strings.ReplaceAll(val, "\\\\", "\\")
+						if val[0] == '"' {
+							val = strings.ReplaceAll(val, "\\\"", "\"")
+						} else if val[0] == '\'' {
+							val = strings.ReplaceAll(val, "\\'", "'")
+						} else if val[0] == '`' {
+							val = strings.ReplaceAll(val, "\\`", "`")
+						}
 					}
-					out.val = NewValue("", val[1:len(val)-1])
+					out.val = lex.value(NewValue("", val[1:len(val)-1]))
 					(lex.p)++
 					goto _out
 
 				}
 			case 13:
-//line lexer.rl:136
+//line lexer.rl:186
 				lex.te = (lex.p) + 1
 				{
 					tok = EQ
@@ -428,7 +469,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 14:
-//line lexer.rl:137
+//line lexer.rl:187
 				lex.te = (lex.p) + 1
 				{
 					tok = NEQ
@@ -436,7 +477,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 15:
-//line lexer.rl:138
+//line lexer.rl:188
 				lex.te = (lex.p) + 1
 				{
 					tok = GTE
@@ -444,7 +485,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 16:
-//line lexer.rl:139
+//line lexer.rl:189
 				lex.te = (lex.p) + 1
 				{
 					tok = LTE
@@ -452,7 +493,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 17:
-//line lexer.rl:140
+//line lexer.rl:190
 				lex.te = (lex.p) + 1
 				{
 					tok = RE
@@ -460,7 +501,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 18:
-//line lexer.rl:141
+//line lexer.rl:191
 				lex.te = (lex.p) + 1
 				{
 					tok = NRE
@@ -468,7 +509,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 19:
-//line lexer.rl:142
+//line lexer.rl:192
 				lex.te = (lex.p) + 1
 				{
 					tok = AND
@@ -476,7 +517,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 20:
-//line lexer.rl:143
+//line lexer.rl:193
 				lex.te = (lex.p) + 1
 				{
 					tok = OR
@@ -484,7 +525,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 21:
-//line lexer.rl:144
+//line lexer.rl:194
 				lex.te = (lex.p) + 1
 				{
 					tok = NC
@@ -492,46 +533,55 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 22:
-//line lexer.rl:89
+//line lexer.rl:137
 				lex.te = (lex.p) + 1
 				{
 					tok = IDENTIFIER
-					out.name = string(lex.data[lex.ts+5 : lex.te-2])
+					out.name = lex.data[lex.ts+5 : lex.te-2]
 					(lex.p)++
 					goto _out
 
 				}
 			case 23:
-//line lexer.rl:60
+//line lexer.rl:99
 				lex.te = (lex.p) + 1
 				{
 					tok = VALUE
-					path := string(lex.data[lex.ts+3 : lex.te-2])
-					lex.once.Do(func() {
-						bs, err := json.Marshal(lex.kv)
-						if err != nil {
-							panic(fmt.Errorf("parameter json marshal failed, %s", err))
+					path := lex.data[lex.ts+3 : lex.te-2]
+					if lex.build {
+						out.val = astValue(jsonPathNode{path: path})
+					} else {
+						if val, ok := SelectPath(lex.kv, path); ok {
+							out.val = NewValue(path, val)
+						} else {
+							if !lex.jsonParsed {
+								bs, err := json.Marshal(lex.kv)
+								if err != nil {
+									panic(fmt.Errorf("parameter json marshal failed, %s", err))
+								}
+								lex.json = gjson.ParseBytes(bs)
+								lex.jsonParsed = true
+							}
+							res := lex.json.Get(path)
+							out.val = NewValue(path, res)
 						}
-						lex.json = gjson.ParseBytes(bs)
-					})
-					res := lex.json.Get(path)
-					out.val = NewValue(path, res)
+					}
 					(lex.p)++
 					goto _out
 
 				}
 			case 24:
-//line lexer.rl:79
+//line lexer.rl:127
 				lex.te = (lex.p) + 1
 				{
 					tok = IDENTIFIER
-					out.name = string(lex.data[lex.ts+4 : lex.te-2])
+					out.name = lex.data[lex.ts+4 : lex.te-2]
 					(lex.p)++
 					goto _out
 
 				}
 			case 25:
-//line lexer.rl:155
+//line lexer.rl:205
 				lex.te = (lex.p) + 1
 				{
 					tok = int(lex.data[lex.ts])
@@ -539,13 +589,13 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 26:
-//line lexer.rl:156
+//line lexer.rl:206
 				lex.te = (lex.p) + 1
 				{
-					panic(errors.New("unexpected character: " + string(lex.data[lex.ts])))
+					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 27:
-//line lexer.rl:94
+//line lexer.rl:142
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -554,13 +604,13 @@ func (lex *lexer) Lex(out *yySymType) int {
 					if err != nil {
 						panic(err)
 					}
-					out.val = NewValue("", n)
+					out.val = lex.value(NewValue("", n))
 					(lex.p)++
 					goto _out
 
 				}
 			case 28:
-//line lexer.rl:74
+//line lexer.rl:122
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -571,65 +621,74 @@ func (lex *lexer) Lex(out *yySymType) int {
 
 				}
 			case 29:
-//line lexer.rl:84
+//line lexer.rl:132
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					tok = IDENTIFIER
-					out.name = string(lex.data[lex.ts+1 : lex.te])
+					out.name = lex.data[lex.ts+1 : lex.te]
 					(lex.p)++
 					goto _out
 
 				}
 			case 30:
-//line lexer.rl:89
+//line lexer.rl:137
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					tok = IDENTIFIER
-					out.name = string(lex.data[lex.ts+5 : lex.te-2])
+					out.name = lex.data[lex.ts+5 : lex.te-2]
 					(lex.p)++
 					goto _out
 
 				}
 			case 31:
-//line lexer.rl:60
+//line lexer.rl:99
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					tok = VALUE
-					path := string(lex.data[lex.ts+3 : lex.te-2])
-					lex.once.Do(func() {
-						bs, err := json.Marshal(lex.kv)
-						if err != nil {
-							panic(fmt.Errorf("parameter json marshal failed, %s", err))
+					path := lex.data[lex.ts+3 : lex.te-2]
+					if lex.build {
+						out.val = astValue(jsonPathNode{path: path})
+					} else {
+						if val, ok := SelectPath(lex.kv, path); ok {
+							out.val = NewValue(path, val)
+						} else {
+							if !lex.jsonParsed {
+								bs, err := json.Marshal(lex.kv)
+								if err != nil {
+									panic(fmt.Errorf("parameter json marshal failed, %s", err))
+								}
+								lex.json = gjson.ParseBytes(bs)
+								lex.jsonParsed = true
+							}
+							res := lex.json.Get(path)
+							out.val = NewValue(path, res)
 						}
-						lex.json = gjson.ParseBytes(bs)
-					})
-					res := lex.json.Get(path)
-					out.val = NewValue(path, res)
+					}
 					(lex.p)++
 					goto _out
 
 				}
 			case 32:
-//line lexer.rl:79
+//line lexer.rl:127
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					tok = IDENTIFIER
-					out.name = string(lex.data[lex.ts+4 : lex.te-2])
+					out.name = lex.data[lex.ts+4 : lex.te-2]
 					(lex.p)++
 					goto _out
 
 				}
 			case 33:
-//line lexer.rl:154
+//line lexer.rl:204
 				lex.te = (lex.p)
 				(lex.p)--
 
 			case 34:
-//line lexer.rl:155
+//line lexer.rl:205
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -638,14 +697,14 @@ func (lex *lexer) Lex(out *yySymType) int {
 					goto _out
 				}
 			case 35:
-//line lexer.rl:156
+//line lexer.rl:206
 				lex.te = (lex.p)
 				(lex.p)--
 				{
-					panic(errors.New("unexpected character: " + string(lex.data[lex.ts])))
+					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 36:
-//line lexer.rl:94
+//line lexer.rl:142
 				(lex.p) = (lex.te) - 1
 				{
 					tok = VALUE
@@ -653,16 +712,16 @@ func (lex *lexer) Lex(out *yySymType) int {
 					if err != nil {
 						panic(err)
 					}
-					out.val = NewValue("", n)
+					out.val = lex.value(NewValue("", n))
 					(lex.p)++
 					goto _out
 
 				}
 			case 37:
-//line lexer.rl:156
+//line lexer.rl:206
 				(lex.p) = (lex.te) - 1
 				{
-					panic(errors.New("unexpected character: " + string(lex.data[lex.ts])))
+					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 38:
 //line NONE:1
@@ -672,16 +731,18 @@ func (lex *lexer) Lex(out *yySymType) int {
 						(lex.p) = (lex.te) - 1
 
 						tok = VALUE
-						val := string(lex.token())
-						val = strings.ReplaceAll(val, "\\\\", "\\")
-						if val[0] == '"' {
-							val = strings.ReplaceAll(val, "\\\"", "\"")
-						} else if val[0] == '\'' {
-							val = strings.ReplaceAll(val, "\\'", "'")
-						} else if val[0] == '`' {
-							val = strings.ReplaceAll(val, "\\`", "`")
+						val := lex.token()
+						if strings.IndexByte(val, '\\') >= 0 {
+							val = strings.ReplaceAll(val, "\\\\", "\\")
+							if val[0] == '"' {
+								val = strings.ReplaceAll(val, "\\\"", "\"")
+							} else if val[0] == '\'' {
+								val = strings.ReplaceAll(val, "\\'", "'")
+							} else if val[0] == '`' {
+								val = strings.ReplaceAll(val, "\\`", "`")
+							}
 						}
-						out.val = NewValue("", val[1:len(val)-1])
+						out.val = lex.value(NewValue("", val[1:len(val)-1]))
 						(lex.p)++
 						goto _out
 
@@ -691,7 +752,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 						(lex.p) = (lex.te) - 1
 
 						tok = VALUE
-						out.val = NewValue("", lex.token() == "true")
+						out.val = lex.value(NewValue("", lex.token() == "true"))
 						(lex.p)++
 						goto _out
 
@@ -700,7 +761,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 					{
 						(lex.p) = (lex.te) - 1
 						tok = VALUE
-						out.val = nilValue
+						out.val = lex.value(nilValue)
 						(lex.p)++
 						goto _out
 					}
@@ -726,7 +787,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 						(lex.p) = (lex.te) - 1
 
 						tok = IDENTIFIER
-						out.name = string(lex.data[lex.ts+5 : lex.te-2])
+						out.name = lex.data[lex.ts+5 : lex.te-2]
 						(lex.p)++
 						goto _out
 
@@ -736,16 +797,25 @@ func (lex *lexer) Lex(out *yySymType) int {
 						(lex.p) = (lex.te) - 1
 
 						tok = VALUE
-						path := string(lex.data[lex.ts+3 : lex.te-2])
-						lex.once.Do(func() {
-							bs, err := json.Marshal(lex.kv)
-							if err != nil {
-								panic(fmt.Errorf("parameter json marshal failed, %s", err))
+						path := lex.data[lex.ts+3 : lex.te-2]
+						if lex.build {
+							out.val = astValue(jsonPathNode{path: path})
+						} else {
+							if val, ok := SelectPath(lex.kv, path); ok {
+								out.val = NewValue(path, val)
+							} else {
+								if !lex.jsonParsed {
+									bs, err := json.Marshal(lex.kv)
+									if err != nil {
+										panic(fmt.Errorf("parameter json marshal failed, %s", err))
+									}
+									lex.json = gjson.ParseBytes(bs)
+									lex.jsonParsed = true
+								}
+								res := lex.json.Get(path)
+								out.val = NewValue(path, res)
 							}
-							lex.json = gjson.ParseBytes(bs)
-						})
-						res := lex.json.Get(path)
-						out.val = NewValue(path, res)
+						}
 						(lex.p)++
 						goto _out
 
@@ -755,7 +825,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 						(lex.p) = (lex.te) - 1
 
 						tok = IDENTIFIER
-						out.name = string(lex.data[lex.ts+4 : lex.te-2])
+						out.name = lex.data[lex.ts+4 : lex.te-2]
 						(lex.p)++
 						goto _out
 
@@ -763,11 +833,11 @@ func (lex *lexer) Lex(out *yySymType) int {
 				case 22:
 					{
 						(lex.p) = (lex.te) - 1
-						panic(errors.New("unexpected character: " + string(lex.data[lex.ts])))
+						panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 					}
 				}
 
-//line lexer.go:704
+//line lexer.go:774
 			}
 		}
 
@@ -782,7 +852,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 //line NONE:1
 				lex.ts = 0
 
-//line lexer.go:718
+//line lexer.go:788
 			}
 		}
 
@@ -805,9 +875,9 @@ func (lex *lexer) Lex(out *yySymType) int {
 		}
 	}
 
-//line lexer.rl:160
+//line lexer.rl:210
 
-	if tok != 0 {
+	if tok != 0 && lex.collectTokens {
 		lex.tokens = append(lex.tokens, lex.token())
 	}
 
@@ -815,5 +885,5 @@ func (lex *lexer) Lex(out *yySymType) int {
 }
 
 func (lex *lexer) Error(e string) {
-	lex.err = errors.New(e)
+	lex.err = lex.errorAt(lex.p, "%s", e)
 }

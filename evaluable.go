@@ -1,18 +1,19 @@
 //go:generate ragel -Z lexer.rl
-//go:generate goyacc -o parser.go parser.y
+//go:generate goyacc -v /dev/null -o parser.go parser.y
 //go:generate gofmt -w parser.go lexer.go
 package goeval
 
 import (
 	"fmt"
 	"reflect"
-	"strconv"
-	"time"
+	"sync"
 )
 
 type Evaluable struct {
 	// custom functions
-	fns map[string]Func
+	fns         map[string]Func
+	foldableFns map[string]struct{}
+	cache       *compileCache
 }
 
 type Func func(...any) (any, error)
@@ -24,12 +25,28 @@ type Option func(*Evaluable)
 func WithFunc(name string, fn Func) Option {
 	return func(e *Evaluable) {
 		e.fns[name] = fn
+		delete(e.foldableFns, name)
+	}
+}
+
+func withFoldableFunc(name string, fn Func) Option {
+	return func(e *Evaluable) {
+		e.fns[name] = fn
+		e.foldableFns[name] = struct{}{}
+	}
+}
+
+func WithCompileCache(size int) Option {
+	return func(e *Evaluable) {
+		e.cache = newCompileCache(size)
 	}
 }
 
 func NewEvaluable(opts ...Option) *Evaluable {
 	e := &Evaluable{
-		fns: make(map[string]Func),
+		fns:         make(map[string]Func),
+		foldableFns: make(map[string]struct{}),
+		cache:       newCompileCache(defaultCompileCacheSize),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -37,124 +54,29 @@ func NewEvaluable(opts ...Option) *Evaluable {
 	return e
 }
 
-var full = NewEvaluable(
-	WithFunc("now", func(args ...any) (any, error) {
-		return time.Now(), nil
-	}),
-	WithFunc("date", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("date() expects exactly one argument")
-		}
-		arg := args[0]
-		if s, ok := arg.(string); ok {
-			for _, format := range [...]string{
-				time.ANSIC,
-				time.UnixDate,
-				time.RubyDate,
-				time.Kitchen,
-				time.RFC3339,
-				time.RFC3339Nano,
-				"2006-01-02",                         // RFC 3339
-				"2006-01-02 15:04",                   // RFC 3339 with minutes
-				"2006-01-02 15:04:05",                // RFC 3339 with seconds
-				"2006-01-02 15:04:05-07:00",          // RFC 3339 with seconds and timezone
-				"2006-01-02T15Z0700",                 // ISO8601 with hour
-				"2006-01-02T15:04Z0700",              // ISO8601 with minutes
-				"2006-01-02T15:04:05Z0700",           // ISO8601 with seconds
-				"2006-01-02T15:04:05.999999999Z0700", // ISO8601 with nanoseconds
-			} {
-				ret, err := time.ParseInLocation(format, s, time.Local)
-				if err == nil {
-					return ret, nil
-				}
-			}
-		} else if f, ok := arg.(float64); ok {
-			return time.Unix(int64(f), 0), nil
-		}
-		return nil, fmt.Errorf("date() expects a string or a number argument")
-	}),
-	WithFunc("strlen", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("strlen() expects exactly one string argument")
-		}
-		s, ok := args[0].(string)
-		if !ok {
-			return nil, fmt.Errorf("strlen() expects exactly one string argument")
-		}
-		return len(s), nil
-	}),
-	WithFunc("duration", func(args ...any) (any, error) {
-		if len(args) < 1 {
-			return nil, fmt.Errorf("date() expects at least one argument")
-		}
-		var (
-			d   time.Duration
-			err error
-		)
-		switch arg := args[0].(type) {
-		case string:
-			d, err = time.ParseDuration(arg)
-		case float64:
-			d = time.Duration(arg)
-		default:
-			err = fmt.Errorf("duration() expects a string or a number argument")
-		}
-		if err != nil {
-			return nil, err
-		}
-		if len(args) == 1 {
-			return d, nil
-		}
-
-		unit, ok := args[1].(string)
-		if !ok {
-			return nil, fmt.Errorf("duration() expects a string unit argument")
-		}
-		switch unit {
-		case "ns":
-			return d.Nanoseconds(), nil
-		case "us":
-			return d.Microseconds(), nil
-		case "ms":
-			return d.Milliseconds(), nil
-		case "s":
-			return d.Seconds(), nil
-		case "m":
-			return d.Minutes(), nil
-		case "h":
-			return d.Hours(), nil
-		case "d":
-			return d.Hours() / 24, nil
-		default:
-			return nil, fmt.Errorf("duration() expects a valid unit argument")
-		}
-	}),
-	WithFunc("float", func(args ...any) (any, error) {
-		if len(args) != 1 {
-			return nil, fmt.Errorf("float() expects exactly one argument")
-		}
-		switch arg := args[0].(type) {
-		case string:
-			return strconv.ParseFloat(arg, 64)
-		case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-			return arg, nil
-		default:
-			return nil, fmt.Errorf("float() expects a string or a number argument")
-		}
-	}),
-)
+var full = NewEvaluable(defaultOptions()...)
 
 func Full(opts ...Option) *Evaluable {
 	if len(opts) == 0 {
 		return full
 	}
+	defaults := make([]Option, 0, len(full.fns)+len(opts))
 	for name, fn := range full.fns {
-		opts = append(opts, WithFunc(name, fn))
+		if _, ok := full.foldableFns[name]; ok {
+			defaults = append(defaults, withFoldableFunc(name, fn))
+		} else {
+			defaults = append(defaults, WithFunc(name, fn))
+		}
 	}
-	return NewEvaluable(opts...)
+	defaults = append(defaults, opts...)
+	return NewEvaluable(defaults...)
 }
 
-func (e *Evaluable) Eval(expr string, args ...any) (val Value, tokens []string, err error) {
+func (e *Evaluable) Eval(expr string, args ...any) (Value, []string, error) {
+	return e.eval(expr, true, args...)
+}
+
+func (e *Evaluable) eval(expr string, collectTokens bool, args ...any) (val Value, tokens []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			val = nilValue
@@ -165,13 +87,14 @@ func (e *Evaluable) Eval(expr string, args ...any) (val Value, tokens []string, 
 	if err != nil {
 		return nilValue, nil, err
 	}
-	lex := newLexer([]byte(expr), pArgs, e.fns)
-	yyParse(lex)
+	lex := newLexer(expr, pArgs, e.fns, collectTokens)
+	defer lex.release()
+	parseWithPool(lex)
 	return lex.answer, lex.tokens, lex.err
 }
 
 func (e *Evaluable) EvalBool(expr string, args ...any) (bool, error) {
-	val, _, err := e.Eval(expr, args...)
+	val, _, err := e.eval(expr, false, args...)
 	if err != nil {
 		return false, err
 	}
@@ -179,7 +102,7 @@ func (e *Evaluable) EvalBool(expr string, args ...any) (bool, error) {
 }
 
 func (e *Evaluable) EvalInt(expr string, args ...any) (int, error) {
-	val, _, err := e.Eval(expr, args...)
+	val, _, err := e.eval(expr, false, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -187,7 +110,7 @@ func (e *Evaluable) EvalInt(expr string, args ...any) (int, error) {
 }
 
 func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
-	val, _, err := e.Eval(expr, args...)
+	val, _, err := e.eval(expr, false, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -195,7 +118,7 @@ func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
 }
 
 func (e *Evaluable) EvalString(expr string, args ...any) (string, error) {
-	val, _, err := e.Eval(expr, args...)
+	val, _, err := e.eval(expr, false, args...)
 	if err != nil {
 		return "", err
 	}
@@ -227,6 +150,14 @@ func parseArgs(args ...any) (map[string]any, error) {
 	if len(args) == 0 {
 		return nil, nil
 	}
+	if len(args) == 1 {
+		switch v := args[0].(type) {
+		case nil:
+			return nil, nil
+		case map[string]any:
+			return v, nil
+		}
+	}
 	pArgs := make(map[string]any)
 	for _, arg := range args {
 		if arg == nil {
@@ -252,4 +183,55 @@ func parseArgs(args ...any) (map[string]any, error) {
 		}
 	}
 	return pArgs, nil
+}
+
+const defaultCompileCacheSize = 256
+
+type compileCache struct {
+	mu     sync.Mutex
+	max    int
+	order  []string
+	values map[string]*CompiledExpression
+}
+
+func newCompileCache(max int) *compileCache {
+	if max <= 0 {
+		return nil
+	}
+	return &compileCache{
+		max:    max,
+		order:  make([]string, 0, max),
+		values: make(map[string]*CompiledExpression, max),
+	}
+}
+
+func (c *compileCache) get(expr string) (*CompiledExpression, bool) {
+	if c == nil {
+		return nil, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	compiled, ok := c.values[expr]
+	return compiled, ok
+}
+
+func (c *compileCache) set(expr string, compiled *CompiledExpression) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.values[expr]; ok {
+		c.values[expr] = compiled
+		return
+	}
+	if len(c.order) >= c.max {
+		oldest := c.order[0]
+		copy(c.order, c.order[1:])
+		c.order[len(c.order)-1] = expr
+		delete(c.values, oldest)
+	} else {
+		c.order = append(c.order, expr)
+	}
+	c.values[expr] = compiled
 }

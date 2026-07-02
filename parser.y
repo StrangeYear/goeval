@@ -34,19 +34,27 @@ expr:
     }
     | '[' params ']'
     {
-        $$ = NewValue("", $2)
+	if yylex.(*lexer).build {
+	    $$ = astValue(arrayNode{items: exprNodes($2)})
+	} else {
+            $$ = NewValue("", $2)
+	}
     }
     | IDENTIFIER '(' params ')'
     {
-	fn := yylex.(*lexer).fns[$1]
-	if fn == nil {
-	    panic(__yyfmt__.Errorf("unknown function %s", $1))
+	if yylex.(*lexer).build {
+	    $$ = astValue(functionNode{name: $1, args: exprNodes($3)})
+	} else {
+	    fn := yylex.(*lexer).fns[$1]
+	    if fn == nil {
+	        panic(__yyfmt__.Errorf("unknown function %s", $1))
+	    }
+	    res, err := fn($3...)
+	    if err != nil {
+	        panic(err)
+	    }
+	    $$ = NewValue("", res)
 	}
-	res, err := fn($3...)
-	if err != nil {
-	    panic(err)
-	}
-	$$ = NewValue("", res)
     }
     | quote
     | nested
@@ -59,147 +67,165 @@ quote:
     }
     | quote IDENTIFIER
     {
-	val := SelectValue($1.val, $2)
-	name := $1.name + "." + $2
-	$$ = NewValue(name, val)
+	if yylex.(*lexer).build {
+	    $$ = astValue(selectNameNode{base: asExprNode($1), key: $2})
+	} else {
+	    val := SelectValue($1.val, $2)
+	    name := $1.name + "." + $2
+	    $$ = NewValue(name, val)
+	}
     }
     | quote '[' expr ']'
     {
-	val := SelectValue($1.val, $3.String())
-	name := __yyfmt__.Sprintf("%s[%#v]", $1.name, $3.val)
-	$$ = NewValue(name, val)
+	if yylex.(*lexer).build {
+	    $$ = astValue(selectIndexExpr($1, $3))
+	} else {
+	    val := SelectValue($1.val, $3.String())
+	    name := indexName($1.name, $3)
+	    $$ = NewValue(name, val)
+	}
     }
     | quote '(' params ')'
     {
-        funcValue := toFunc($1.val)
-	val, err := funcValue($3...)
-	if err != nil {
-	    panic(err)
+	if yylex.(*lexer).build {
+	    $$ = astValue(callNode{base: asExprNode($1), args: exprNodes($3)})
+	} else {
+            funcValue := toFunc($1.val)
+	    val, err := funcValue($3...)
+	    if err != nil {
+	        panic(err)
+	    }
+	    name := callName($1.name)
+	    $$ = NewValue(name, val)
 	}
-	name := $1.name + "("
-	for _, v := range $3 {
-	   name += __yyfmt__.Sprintf("%#v, ", v)
-	}
-	if name[len(name)-2] == ',' {
-	    name = name[:len(name)-2]
-	}
-	name += ")"
-	$$ = NewValue(name, val)
     }
 
 nested:
     IDENTIFIER
     {
-	val := yylex.(*lexer).kv[$1]
-	$$ = NewValue($1, val)
+	if yylex.(*lexer).build {
+	    $$ = astValue(variableNode{name: $1})
+	} else {
+	    val := yylex.(*lexer).kv[$1]
+	    $$ = NewValue($1, val)
+	}
     }
     | nested IDENTIFIER
     {
-	val := SelectValue($1.val, $2)
-	name := $1.name + "." + $2
-	$$ = NewValue(name, val)
+	if yylex.(*lexer).build {
+	    $$ = astValue(selectNameNode{base: asExprNode($1), key: $2})
+	} else {
+	    val := SelectValue($1.val, $2)
+	    name := $1.name + "." + $2
+	    $$ = NewValue(name, val)
+	}
     }
     | nested '[' expr ']'
     {
-	val := SelectValue($1.val, $3.String())
-	name := __yyfmt__.Sprintf("%s[%#v]", $1.name, $3.val)
-	$$ = NewValue(name, val)
+	if yylex.(*lexer).build {
+	    $$ = astValue(selectIndexExpr($1, $3))
+	} else {
+	    val := SelectValue($1.val, $3.String())
+	    name := indexName($1.name, $3)
+	    $$ = NewValue(name, val)
+	}
     }
     | nested '(' params ')'
     {
-        funcValue := toFunc($1.val)
-	val, err := funcValue($3...)
-	if err != nil {
-	    panic(err)
+	if yylex.(*lexer).build {
+	    $$ = astValue(callNode{base: asExprNode($1), args: exprNodes($3)})
+	} else {
+            funcValue := toFunc($1.val)
+	    val, err := funcValue($3...)
+	    if err != nil {
+	        panic(err)
+	    }
+	    name := callName($1.name)
+	    $$ = NewValue(name, val)
 	}
-	name := $1.name + "("
-	for _, v := range $3 {
-	   name += __yyfmt__.Sprintf("%#v, ", v)
-	}
-	if name[len(name)-2] == ',' {
-	    name = name[:len(name)-2]
-	}
-	name += ")"
-	$$ = NewValue(name, val)
     }
 
 params:
     {
-	$$ = []any{}
+	$$ = nil
     }
     | expr
     {
-	$$ = []any{$1.val}
+	$$ = []any{yylex.(*lexer).param($1)}
     }
     | params ',' expr
     {
-	$$ = append($$, $3.val)
+	$$ = append($$, yylex.(*lexer).param($3))
     }
 
 rel:
   expr
 | '!' rel {
-        $$ = $2.Not()
+	if yylex.(*lexer).build {
+	    $$ = astValue(unaryNode{op: "!", x: asExprNode($2)})
+	} else {
+            $$ = $2.Not()
+	}
 }
 | rel EQ rel {
-        $$ = $1.Eq($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opEq, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Eq($3) }
 }
 | rel NEQ rel {
-        $$ = $1.Neq($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opNeq, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Neq($3) }
 }
 | rel GTE rel {
-        $$ = $1.Gte($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opGte, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Gte($3) }
 }
 | rel LTE rel {
-        $$ = $1.Lte($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opLte, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Lte($3) }
 }
 | rel RE rel {
-        $$ = $1.Re($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opRe, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Re($3) }
 }
 | rel NRE rel {
-        $$ = $1.Nre($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opNre, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Nre($3) }
 }
 | rel NC rel {
-        $$ = $1.Nc($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opNc, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Nc($3) }
 }
 | rel IN rel {
-        $$ = $1.In($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opIn, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.In($3) }
 }
 | rel '<' rel {
-        $$ = $1.Lt($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opLt, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Lt($3) }
 }
 | rel '>' rel {
-        $$ = $1.Gt($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opGt, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Gt($3) }
 }
 | rel '=' rel {
-        $$ = $1.Match($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opMatch, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Match($3) }
 }
 | rel '+' rel {
-        $$ = $1.Add($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opAdd, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Add($3) }
 }
 | rel '-' rel {
-        $$ = $1.Sub($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opSub, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Sub($3) }
 }
 | rel '*' rel {
-        $$ = $1.Multi($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opMulti, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Multi($3) }
 }
 | rel '/' rel {
-        $$ = $1.Div($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opDiv, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Div($3) }
 }
 | rel '%' rel {
-        $$ = $1.Mod($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opMod, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Mod($3) }
 }
 ;
 
 cond:
   rel
 | cond AND cond {
-	$$ = $1.And($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opAnd, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.And($3) }
 }
 | cond OR cond {
-	$$ = $1.Or($3)
+	if yylex.(*lexer).build { $$ = astValue(binaryNode{op: opOr, left: asExprNode($1), right: asExprNode($3)}) } else { $$ = $1.Or($3) }
 }
 | cond '?' cond ':' cond {
-    	$$ = $1.Ternary($3, $5)
+	if yylex.(*lexer).build { $$ = astValue(ternaryNode{cond: asExprNode($1), truthy: asExprNode($3), falsy: asExprNode($5)}) } else { $$ = $1.Ternary($3, $5) }
   }
 ;

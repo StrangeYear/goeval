@@ -2,7 +2,6 @@ package goeval
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -20,31 +19,71 @@ import (
 }%%
 
 type lexer struct {
-    data []byte
+    data string
     p, pe, cs int
     ts, te, act int
     answer Value
     kv map[string]any
     err error
     tokens []string
+    collectTokens bool
+    build bool
     fns map[string]Func
-    once sync.Once
+    jsonParsed bool
     json gjson.Result
 }
 
-func (lex *lexer) token() string {
-	return string(lex.data[lex.ts:lex.te])
+var lexerPool = sync.Pool{
+	New: func() any {
+		return new(lexer)
+	},
 }
 
-func newLexer(data []byte, kv map[string]any, fns map[string]Func) *lexer {
-	lex := &lexer{
+func (lex *lexer) token() string {
+	return lex.data[lex.ts:lex.te]
+}
+
+func (lex *lexer) position(pos int) (int, int) {
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(lex.data) {
+		pos = len(lex.data)
+	}
+	line := 1
+	column := 1
+	for i := 0; i < pos; i++ {
+		if lex.data[i] == '\n' {
+			line++
+			column = 1
+		} else {
+			column++
+		}
+	}
+	return line, column
+}
+
+func (lex *lexer) errorAt(pos int, format string, args ...any) error {
+	line, column := lex.position(pos)
+	return fmt.Errorf("%s at line %d, column %d", fmt.Sprintf(format, args...), line, column)
+}
+
+func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens bool) *lexer {
+	lex := lexerPool.Get().(*lexer)
+	*lex = lexer{
 			data: data,
 			pe: len(data),
 			kv: kv,
 			fns: fns,
+			collectTokens: collectTokens,
 	}
 	%% write init;
 	return lex
+}
+
+func (lex *lexer) release() {
+	*lex = lexer{}
+	lexerPool.Put(lex)
 }
 
 func (lex *lexer) Lex(out *yySymType) int {
@@ -54,21 +93,30 @@ func (lex *lexer) Lex(out *yySymType) int {
 	%%{
 		action Bool {
 			tok = VALUE
-			out.val = NewValue("", lex.token() == "true")
+			out.val = lex.value(NewValue("", lex.token() == "true"))
 			fbreak;
 		}
 		action JsonPath {
 			tok = VALUE
-			path := string(lex.data[lex.ts+3:lex.te-2])
-			lex.once.Do(func() {
-            	bs, err := json.Marshal(lex.kv)
-            	if err != nil {
-            		panic(fmt.Errorf("parameter json marshal failed, %s", err))
-            	}
-            	lex.json = gjson.ParseBytes(bs)
-            })
-            res := lex.json.Get(path)
-			out.val = NewValue(path, res)
+			path := lex.data[lex.ts+3:lex.te-2]
+			if lex.build {
+				out.val = astValue(jsonPathNode{path: path})
+			} else {
+				if val, ok := SelectPath(lex.kv, path); ok {
+					out.val = NewValue(path, val)
+				} else {
+					if !lex.jsonParsed {
+						bs, err := json.Marshal(lex.kv)
+						if err != nil {
+							panic(fmt.Errorf("parameter json marshal failed, %s", err))
+						}
+						lex.json = gjson.ParseBytes(bs)
+						lex.jsonParsed = true
+					}
+					res := lex.json.Get(path)
+					out.val = NewValue(path, res)
+				}
+			}
 			fbreak;
 		}
 		action Identifier {
@@ -78,17 +126,17 @@ func (lex *lexer) Lex(out *yySymType) int {
         }
         action Special {
             tok = IDENTIFIER
-            out.name = string(lex.data[lex.ts+4:lex.te-2])
+            out.name = lex.data[lex.ts+4:lex.te-2]
             fbreak;
         }
         action SubPath {
              tok = IDENTIFIER
-             out.name = string(lex.data[lex.ts+1:lex.te])
+             out.name = lex.data[lex.ts+1:lex.te]
              fbreak;
         }
         action SpecialSubPath {
              tok = IDENTIFIER
-             out.name = string(lex.data[lex.ts+5:lex.te-2])
+             out.name = lex.data[lex.ts+5:lex.te-2]
              fbreak;
         }
 		action Float {
@@ -97,21 +145,23 @@ func (lex *lexer) Lex(out *yySymType) int {
 			if err != nil {
 				panic(err)
 			}
-			out.val = NewValue("", n)
+			out.val = lex.value(NewValue("", n))
 			fbreak;
 		}
 		action String {
 			tok = VALUE
-			val := string(lex.token())
-			val = strings.ReplaceAll(val, "\\\\", "\\")
-			if val[0] == '"' {
-			    val = strings.ReplaceAll(val, "\\\"", "\"")
-			}else if val[0] == '\'' {
-                val = strings.ReplaceAll(val, "\\'", "'")
-            }else if val[0] == '`' {
-                val = strings.ReplaceAll(val, "\\`", "`")
-            }
-			out.val = NewValue("", val[1:len(val)-1])
+			val := lex.token()
+			if strings.IndexByte(val, '\\') >= 0 {
+				val = strings.ReplaceAll(val, "\\\\", "\\")
+				if val[0] == '"' {
+					val = strings.ReplaceAll(val, "\\\"", "\"")
+				}else if val[0] == '\'' {
+					val = strings.ReplaceAll(val, "\\'", "'")
+				}else if val[0] == '`' {
+					val = strings.ReplaceAll(val, "\\`", "`")
+				}
+			}
+			out.val = lex.value(NewValue("", val[1:len(val)-1]))
 			fbreak;
 		}
 
@@ -130,7 +180,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 			string => String;
 			(int | float) => Float;
 			("true" | "false") => Bool;
-			"nil" => { tok = VALUE; out.val = nilValue; fbreak; };
+			"nil" => { tok = VALUE; out.val = lex.value(nilValue); fbreak; };
 
 			# relations
 			"==" => { tok = EQ; fbreak; };
@@ -153,13 +203,13 @@ func (lex *lexer) Lex(out *yySymType) int {
             special => Special;
 			space+;
 			letter => { tok = int(lex.data[lex.ts]); fbreak; };
-			any => { panic(errors.New("unexpected character: " + string(lex.data[lex.ts]))) };
+			any => { panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts])) };
 		*|;
 
 		write exec;
 	}%%
 
-	if tok != 0 {
+	if tok != 0 && lex.collectTokens {
        lex.tokens = append(lex.tokens, lex.token())
     }
 
@@ -167,5 +217,5 @@ func (lex *lexer) Lex(out *yySymType) int {
 }
 
 func (lex *lexer) Error(e string) {
-    lex.err = errors.New(e)
+    lex.err = lex.errorAt(lex.p, "%s", e)
 }

@@ -5,40 +5,130 @@ package goeval
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 )
+
+func SelectPath(value any, path string) (any, bool) {
+	if value == nil {
+		return nil, false
+	}
+	cur := value
+	for {
+		dot := strings.IndexByte(path, '.')
+		part := path
+		if dot >= 0 {
+			part = path[:dot]
+		}
+		if part == "" {
+			return nil, false
+		}
+		next, ok := selectPathPart(cur, part)
+		if !ok {
+			return nil, false
+		}
+		if dot < 0 {
+			return next, true
+		}
+		cur = next
+		path = path[dot+1:]
+	}
+}
+
+func selectPathPart(value any, key string) (any, bool) {
+	switch v := value.(type) {
+	case map[string]any:
+		return selectStringMapPath(v, key)
+	case map[string]string:
+		return selectStringMapPath(v, key)
+	case map[string]int:
+		return selectStringMapPath(v, key)
+	case map[string]float64:
+		return selectStringMapPath(v, key)
+	case map[string]bool:
+		return selectStringMapPath(v, key)
+	case []any:
+		return selectSlicePath(v, key)
+	case []int:
+		return selectSlicePath(v, key)
+	case []float64:
+		return selectSlicePath(v, key)
+	case []string:
+		return selectSlicePath(v, key)
+	case []bool:
+		return selectSlicePath(v, key)
+	}
+	return nil, false
+}
+
+func parsePathIndex(key string) (int, bool) {
+	i, err := strconv.Atoi(key)
+	return i, err == nil && i >= 0
+}
 
 func SelectValue(value any, key string) any {
 	if value == nil {
 		return nil
 	}
 
+	switch v := value.(type) {
+	case map[string]any:
+		return selectStringMap(v, key)
+	case map[string]string:
+		return selectStringMap(v, key)
+	case map[string]int:
+		return selectStringMap(v, key)
+	case map[string]float64:
+		return selectStringMap(v, key)
+	case map[string]bool:
+		return selectStringMap(v, key)
+	case []any:
+		return selectSlice(v, key)
+	case []int:
+		return selectSlice(v, key)
+	case []float64:
+		return selectSlice(v, key)
+	case []string:
+		return selectSlice(v, key)
+	case []bool:
+		return selectSlice(v, key)
+	}
+
 	vv := reflect.ValueOf(value)
 	vvElem := resolvePotentialPointer(vv)
+	if !vvElem.IsValid() {
+		return nil
+	}
 
 	switch vvElem.Kind() {
 	case reflect.Map:
-		mapKey, ok := reflectConvertTo(vv.Type().Key().Kind(), key)
+		mapKey, ok := reflectConvertTo(vvElem.Type().Key().Kind(), key)
 		if !ok {
 			return nil
 		}
 
-		vvElem = vv.MapIndex(reflect.ValueOf(mapKey))
+		vvElem = vvElem.MapIndex(reflect.ValueOf(mapKey))
 		vvElem = resolvePotentialPointer(vvElem)
 
-		if vvElem.IsValid() {
+		if vvElem.IsValid() && vvElem.CanInterface() {
 			return vvElem.Interface()
 		}
 	case reflect.Slice, reflect.Array, reflect.String:
-		if i := NewValue("", key).Int(); i >= 0 && vv.Len() > i {
-			vvElem = resolvePotentialPointer(vv.Index(i))
-			return vvElem.Interface()
+		if i := NewValue("", key).Int(); i >= 0 && vvElem.Len() > i {
+			vvElem = resolvePotentialPointer(vvElem.Index(i))
+			if vvElem.IsValid() && vvElem.CanInterface() {
+				return vvElem.Interface()
+			}
 		}
 	case reflect.Struct:
 		field := vvElem.FieldByName(key)
-		if field.IsValid() {
+		if field.IsValid() && field.CanInterface() {
 			return field.Interface()
 		}
 		method := vv.MethodByName(key)
+		if !method.IsValid() {
+			method = vvElem.MethodByName(key)
+		}
 		if method.IsValid() {
 			return method.Interface()
 		}
@@ -49,9 +139,44 @@ func SelectValue(value any, key string) any {
 	return nil
 }
 
+func selectStringMap[V any](values map[string]V, key string) any {
+	return values[key]
+}
+
+func selectStringMapPath[V any](values map[string]V, key string) (any, bool) {
+	val, ok := values[key]
+	return val, ok
+}
+
+func selectSlice[V any](values []V, key string) any {
+	if i := parseIndex(key); i >= 0 && len(values) > i {
+		return values[i]
+	}
+	return nil
+}
+
+func selectSlicePath[V any](values []V, key string) (any, bool) {
+	i, ok := parsePathIndex(key)
+	if ok && len(values) > i {
+		return values[i], true
+	}
+	return nil, false
+}
+
+func parseIndex(key string) int {
+	i, err := strconv.Atoi(key)
+	if err == nil {
+		return i
+	}
+	return NewValue("", key).Int()
+}
+
 func resolvePotentialPointer(value reflect.Value) reflect.Value {
-	if value.Kind() == reflect.Ptr {
-		return value.Elem()
+	for value.IsValid() && value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return reflect.Value{}
+		}
+		value = value.Elem()
 	}
 	return value
 }

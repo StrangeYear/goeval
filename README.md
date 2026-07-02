@@ -16,6 +16,11 @@ GoEval can evaluate expressions with parameters, arimethetic, logical, and strin
 - date comparator: `date(`2022-05-02`) > date(`2022-05-01 23:59:59`)`
 - date timestamp comparator: `date(1651467728) > date("2022-05-01 23:59:59")`
 - `strlen("someReallyLongInputString") <= 16`
+- compiled expression: `compiled, err := goeval.Compile("foo > 0")`
+- expression validation: `err := goeval.Validate("foo > 0")`
+- variable dependency extraction: `vars, err := goeval.Variables("foo.bar > min")`
+- structured dependency extraction: `deps, err := goeval.Dependencies("foo[bar] > 0")`
+- evaluation trace: `steps, err := goeval.Explain("foo > 0", params)`
 
 It can easily be extended with custom functions or operators:
 
@@ -33,6 +38,49 @@ custom comparator: max(1,2,3) > 1
 - Prefixes: ! - ~
 - Ternary conditional: ? :
 - Null coalescence: ??
+
+### Built-in functions
+- Strings: `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `replace`, `strlen`
+- Collections: `len`
+- Numbers: `min`, `max`, `abs`, `round`
+- Conversion: `int`, `float`, `string`, `bool`
+- Presence checks: `exists`, `empty`, `notEmpty`, `coalesce`, `default`
+- Matching and booleans: `matches`, `regex`, `any`, `all`
+- Time: `now`, `date`, `duration`
+
+### Compile and validate
+```go
+compiled, err := goeval.Compile(`user.age >= 18 && contains(email, "@company.com")`)
+if err != nil {
+    return err
+}
+
+ok, err := compiled.EvalMapBool(map[string]any{
+    "user":  map[string]any{"age": 20},
+    "email": "dev@company.com",
+})
+```
+
+Lexer and parser errors include line and column information, for example:
+`unexpected character "@" at line 1, column 3`.
+
+```go
+vars, err := goeval.Variables(`user.age >= minAge && tags[idx] == "go"`)
+// vars == []string{"idx", "minAge", "tags", "user.age"}
+```
+
+```go
+deps, err := goeval.Dependencies(`contains(email, "@") && tags[idx] == "go"`)
+// deps includes function, variable, and dynamic-index dependency metadata.
+```
+
+```go
+steps, err := goeval.Explain(`age > 18 && contains(email, "@")`, map[string]any{
+    "age":   20,
+    "email": "dev@company.com",
+})
+// steps contains the evaluated subexpressions and their values.
+```
 
 ### Functions
 ```go
