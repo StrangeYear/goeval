@@ -156,12 +156,7 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 	case jsonPathNode:
 		return t.add(nodeExpr(node), evalJSONPath(ctx.kv, n.path))
 	case unaryNode:
-		switch n.op {
-		case "!":
-			return t.add(nodeExpr(node), t.eval(ctx, n.x).Not())
-		default:
-			panic(fmt.Errorf("unsupported unary operator %s", n.op))
-		}
+		return t.add(nodeExpr(node), evalUnaryValue(n.op, t.eval(ctx, n.x)))
 	case binaryNode:
 		return t.evalBinary(ctx, n)
 	case regexNode:
@@ -194,59 +189,10 @@ func (t *explainTrace) evalArgs(ctx *evalContext, nodes []exprNode) []any {
 
 func (t *explainTrace) evalBinary(ctx *evalContext, n binaryNode) Value {
 	left := t.eval(ctx, n.left)
-	switch n.op {
-	case opAnd:
-		if !left.Boolean() {
-			return t.add(nodeExpr(n), left)
-		}
-		return t.add(nodeExpr(n), t.eval(ctx, n.right))
-	case opOr:
-		if left.Boolean() {
-			return t.add(nodeExpr(n), left)
-		}
-		return t.add(nodeExpr(n), t.eval(ctx, n.right))
-	case opNc:
-		if isCoalesceEmpty(left) {
-			return t.add(nodeExpr(n), t.eval(ctx, n.right))
-		}
-		return t.add(nodeExpr(n), left)
+	if val, ok := evalBinaryShortCircuit(n.op, left); ok {
+		return t.add(nodeExpr(n), val)
 	}
-
-	right := t.eval(ctx, n.right)
-	switch n.op {
-	case opEq:
-		return t.add(nodeExpr(n), left.Eq(right))
-	case opNeq:
-		return t.add(nodeExpr(n), left.Neq(right))
-	case opGte:
-		return t.add(nodeExpr(n), left.Gte(right))
-	case opLte:
-		return t.add(nodeExpr(n), left.Lte(right))
-	case opRe:
-		return t.add(nodeExpr(n), left.Re(right))
-	case opNre:
-		return t.add(nodeExpr(n), left.Nre(right))
-	case opIn:
-		return t.add(nodeExpr(n), left.In(right))
-	case opLt:
-		return t.add(nodeExpr(n), left.Lt(right))
-	case opGt:
-		return t.add(nodeExpr(n), left.Gt(right))
-	case opMatch:
-		return t.add(nodeExpr(n), left.Match(right))
-	case opAdd:
-		return t.add(nodeExpr(n), left.Add(right))
-	case opSub:
-		return t.add(nodeExpr(n), left.Sub(right))
-	case opMulti:
-		return t.add(nodeExpr(n), left.Multi(right))
-	case opDiv:
-		return t.add(nodeExpr(n), left.Div(right))
-	case opMod:
-		return t.add(nodeExpr(n), left.Mod(right))
-	default:
-		panic(fmt.Errorf("unsupported binary operator %s", n.op))
-	}
+	return t.add(nodeExpr(n), evalBinaryValue(n.op, left, t.eval(ctx, n.right)))
 }
 
 type dependencyCollector struct {

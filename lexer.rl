@@ -27,7 +27,6 @@ type lexer struct {
     err error
     tokens []string
     collectTokens bool
-    build bool
     fns map[string]Func
     jsonParsed bool
     json gjson.Result
@@ -86,57 +85,63 @@ func (lex *lexer) release() {
 	lexerPool.Put(lex)
 }
 
-func (lex *lexer) Lex(out *yySymType) int {
+type lexeme struct {
+	val        Value
+	name       string
+	jsonPath   string
+	isJSONPath bool
+}
+
+func (lex *lexer) jsonPathValue(path string) Value {
+	if val, ok := SelectPath(lex.kv, path); ok {
+		return NewValue(path, val)
+	}
+	if !lex.jsonParsed {
+		bs, err := json.Marshal(lex.kv)
+		if err != nil {
+			panic(fmt.Errorf("parameter json marshal failed, %s", err))
+		}
+		lex.json = gjson.ParseBytes(bs)
+		lex.jsonParsed = true
+	}
+	return NewValue(path, lex.json.Get(path))
+}
+
+func (lex *lexer) next() (int, lexeme) {
 	eof := lex.pe
 	tok := 0
+	var item lexeme
 
 	%%{
 		action Bool {
 			tok = VALUE
-			out.val = lex.value(NewValue("", lex.token() == "true"))
+			item.val = NewValue("", lex.token() == "true")
 			fbreak;
 		}
 		action JsonPath {
 			tok = VALUE
-			path := lex.data[lex.ts+3:lex.te-2]
-			if lex.build {
-				out.val = astValue(jsonPathNode{path: path})
-			} else {
-				if val, ok := SelectPath(lex.kv, path); ok {
-					out.val = NewValue(path, val)
-				} else {
-					if !lex.jsonParsed {
-						bs, err := json.Marshal(lex.kv)
-						if err != nil {
-							panic(fmt.Errorf("parameter json marshal failed, %s", err))
-						}
-						lex.json = gjson.ParseBytes(bs)
-						lex.jsonParsed = true
-					}
-					res := lex.json.Get(path)
-					out.val = NewValue(path, res)
-				}
-			}
+			item.jsonPath = lex.data[lex.ts+3:lex.te-2]
+			item.isJSONPath = true
 			fbreak;
 		}
 		action Identifier {
             tok = IDENTIFIER
-            out.name = lex.token()
+            item.name = lex.token()
             fbreak;
         }
         action Special {
             tok = IDENTIFIER
-            out.name = lex.data[lex.ts+4:lex.te-2]
+            item.name = lex.data[lex.ts+4:lex.te-2]
             fbreak;
         }
         action SubPath {
              tok = IDENTIFIER
-             out.name = lex.data[lex.ts+1:lex.te]
+             item.name = lex.data[lex.ts+1:lex.te]
              fbreak;
         }
         action SpecialSubPath {
              tok = IDENTIFIER
-             out.name = lex.data[lex.ts+5:lex.te-2]
+             item.name = lex.data[lex.ts+5:lex.te-2]
              fbreak;
         }
 		action Float {
@@ -145,7 +150,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 			if err != nil {
 				panic(err)
 			}
-			out.val = lex.value(NewValue("", n))
+			item.val = NewValue("", n)
 			fbreak;
 		}
 		action String {
@@ -161,14 +166,14 @@ func (lex *lexer) Lex(out *yySymType) int {
 					val = strings.ReplaceAll(val, "\\`", "`")
 				}
 			}
-			out.val = lex.value(NewValue("", val[1:len(val)-1]))
+			item.val = NewValue("", val[1:len(val)-1])
 			fbreak;
 		}
 
 		identifier = (alpha | '_')+ (alnum | '_')* ;
 		string = '"' ((any - '"') | '\\\"')* '"' | "'" ((any - "'") | "\\\'")* "'" | '`' ((any - "`") | "\\\`")* "`" ;
-		int = '-'? digit+ ;
-		float = '-'? digit+ ('.' digit+)? ;
+		int = digit+ ;
+		float = digit+ ('.' digit+)? ;
         jsonpath = "$[" string ']' ;
         special = "$.[" string ']' ;
         letter = '+' | '-' | '*' | '/' | '%' | '<' | '>' | '?' | ':' | '=' | '!' | '(' | ')' | ',' | '[' | ']';
@@ -180,7 +185,7 @@ func (lex *lexer) Lex(out *yySymType) int {
 			string => String;
 			(int | float) => Float;
 			("true" | "false") => Bool;
-			"nil" => { tok = VALUE; out.val = lex.value(nilValue); fbreak; };
+			"nil" => { tok = VALUE; item.val = nilValue; fbreak; };
 
 			# relations
 			"==" => { tok = EQ; fbreak; };
@@ -213,7 +218,65 @@ func (lex *lexer) Lex(out *yySymType) int {
        lex.tokens = append(lex.tokens, lex.token())
     }
 
+	return tok, item
+}
+
+func (lex *lexer) Lex(out *yySymType) int {
+	tok, item := lex.next()
+	switch tok {
+	case VALUE:
+		if item.isJSONPath {
+			out.val = lex.jsonPathValue(item.jsonPath)
+		} else {
+			out.val = item.val
+		}
+	case IDENTIFIER:
+		out.name = item.name
+	}
 	return tok
+}
+
+type compileLexerAdapter struct {
+	*lexer
+	answer exprNode
+}
+
+func (lex *compileLexerAdapter) Lex(out *compileSymType) int {
+	tok, item := lex.next()
+	switch tok {
+	case VALUE:
+		if item.isJSONPath {
+			out.node = jsonPathNode{path: item.jsonPath}
+		} else {
+			out.node = literalNode{value: item.val}
+		}
+		return C_VALUE
+	case IDENTIFIER:
+		out.name = item.name
+		return C_IDENTIFIER
+	case EQ:
+		return C_EQ
+	case NEQ:
+		return C_NEQ
+	case GTE:
+		return C_GTE
+	case LTE:
+		return C_LTE
+	case RE:
+		return C_RE
+	case NRE:
+		return C_NRE
+	case AND:
+		return C_AND
+	case OR:
+		return C_OR
+	case NC:
+		return C_NC
+	case IN:
+		return C_IN
+	default:
+		return tok
+	}
 }
 
 func (lex *lexer) Error(e string) {

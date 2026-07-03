@@ -53,7 +53,8 @@ check-goyacc:
 generate:
 	$(RAGEL) -Z lexer.rl
 	$(GOYACC) -v $(GOYACC_REPORT) -o parser.go parser.y
-	gofmt -w parser.go lexer.go
+	$(GOYACC) -p compile -v $(GOYACC_REPORT) -o compile_parser.go compile_parser.y
+	gofmt -w parser.go compile_parser.go lexer.go
 
 test:
 	$(GO) test ./...

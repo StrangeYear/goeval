@@ -1,6 +1,7 @@
 //go:generate ragel -Z lexer.rl
 //go:generate goyacc -v /dev/null -o parser.go parser.y
-//go:generate gofmt -w parser.go lexer.go
+//go:generate goyacc -p compile -v /dev/null -o compile_parser.go compile_parser.y
+//go:generate gofmt -w parser.go compile_parser.go lexer.go
 package goeval
 
 import (

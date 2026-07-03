@@ -8,175 +8,57 @@ import (
 	"time"
 )
 
-func TestEvalBool(t *testing.T) {
-	yyDebug = 1
-	yyErrorVerbose = true
-	type args struct {
-		expr string
-		args []any
+func assertEvalAndCompile(t *testing.T, e *Evaluable, expr string, want any, args ...any) {
+	t.Helper()
+
+	evalVal, _, err := e.Eval(expr, args...)
+	if err != nil {
+		t.Fatalf("Eval() error = %v", err)
 	}
-	tests := []struct {
-		args    args
-		want    bool
-		wantErr bool
-	}{
-		{
-			args: args{
-				expr: "true",
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "false",
-			},
-			want:    false,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "1 + 2 >= 3",
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "(1 + 2) > 5",
-			},
-			want:    false,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "abc > 6",
-				args: []any{map[string]any{"abc": 7}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `abc == 'abc"d'`,
-				args: []any{map[string]any{"abc": "abc\"d"}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `"abc" == "abc"`,
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a in [3,4,5]",
-				args: []any{map[string]any{"a": 2}},
-			},
-			want:    false,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a in [3,4,5,b]",
-				args: []any{map[string]any{"a": 7, "b": 7}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a in b",
-				args: []any{map[string]any{"a": 7, "b": "[7]"}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a in b",
-				args: []any{map[string]any{"a": 7, "b": []int{7}}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `$["a.b.0"] > 5`,
-				args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `$["a.b.#"] == 2`,
-				args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "__hour > 6",
-				args: []any{map[string]any{"__hour": 7}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `a == "a\"bc"`,
-				args: []any{map[string]any{"a": `a"bc`}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `a == 'a\'bc'`,
-				args: []any{map[string]any{"a": `a'bc`}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a == 'a`bc'",
-				args: []any{map[string]any{"a": "a`bc"}},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `$.["foo bar"].$.["foo baz"].data == "baz"`,
-				args: []any{map[string]any{"foo bar": map[string]any{"foo baz": map[string]any{"data": "baz"}}}},
-			},
-			want:    true,
-			wantErr: false,
-		},
+
+	compiled, err := e.Compile(expr)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
 	}
+	compiledVal, err := compiled.Eval(args...)
+	if err != nil {
+		t.Fatalf("Compiled Eval() error = %v", err)
+	}
+
+	if evalVal.vType != compiledVal.vType || !reflect.DeepEqual(evalVal.val, compiledVal.val) {
+		t.Fatalf("Eval() = %#v, compiled = %#v", evalVal, compiledVal)
+	}
+	if !reflect.DeepEqual(evalVal.val, want) {
+		t.Fatalf("both modes = %#v, want %#v", evalVal.val, want)
+	}
+}
+
+type expressionCase struct {
+	name string
+	expr string
+	args []any
+	want any
+}
+
+func runExpressionCases(t *testing.T, e *Evaluable, tests []expressionCase) {
+	t.Helper()
+
 	for _, tt := range tests {
-		t.Run(tt.args.expr, func(t *testing.T) {
-			got, tokens, err := Eval(tt.args.expr, tt.args.args...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EvalBool() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got.Boolean() != tt.want {
-				t.Errorf("EvalBool() got = %v, want %v", got, tt.want)
-			}
-			t.Logf("%#v", tokens)
+		name := tt.name
+		if name == "" {
+			name = tt.expr
+		}
+		t.Run(name, func(t *testing.T) {
+			assertEvalAndCompile(t, e, tt.expr, tt.want, tt.args...)
 		})
 	}
 }
 
-func TestFunc(t *testing.T) {
-	val, err := Full(
+func TestEvalAndCompileModes(t *testing.T) {
+	yyDebug = 1
+	yyErrorVerbose = true
+
+	e := Full(
 		WithFunc("max", func(args ...any) (any, error) {
 			if len(args) == 0 {
 				return 0, nil
@@ -195,185 +77,159 @@ func TestFunc(t *testing.T) {
 			}
 			return val, nil
 		}),
-	).EvalFloat(`max(1,2,3,a)`, map[string]any{"a": float64(6)})
-	if err != nil {
-		t.Fatalf("Eval() error = %v", err)
-	}
-	t.Log(val == 6)
-	// output: true
-}
-
-func TestStringConcatenation(t *testing.T) {
-	tests := []struct {
-		expr string
-		want string
-	}{
-		{expr: `1 + "a"`, want: "1a"},
-		{expr: `"a" + 1`, want: "a1"},
-		{expr: `"a" + "b"`, want: "ab"},
-		{expr: `1 + "2"`, want: "12"},
-		{expr: `1 + "2" + 3`, want: "123"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.expr, func(t *testing.T) {
-			got, _, err := Eval(tt.expr)
-			if err != nil {
-				t.Fatalf("Eval() error = %v", err)
+		WithFunc("randN", func(args ...any) (any, error) {
+			if len(args) != 1 {
+				return nil, fmt.Errorf("randN() expects exactly one argument")
 			}
-			if got.vType != String {
-				t.Fatalf("Eval() type = %v, want String", got.vType)
-			}
-			if got.String() != tt.want {
-				t.Fatalf("Eval() = %q, want %q", got.String(), tt.want)
-			}
-		})
-	}
-}
-
-func TestStringSubtraction(t *testing.T) {
-	got, _, err := Eval(`"hello world" - " world"`)
-	if err != nil {
-		t.Fatalf("Eval() error = %v", err)
-	}
-	if got.vType != String {
-		t.Fatalf("Eval() type = %v, want String", got.vType)
-	}
-	if got.String() != "hello" {
-		t.Fatalf("Eval() = %q, want hello", got.String())
-	}
-}
-
-func TestCompile(t *testing.T) {
-	tests := []struct {
-		name string
-		expr string
-		args []any
-		want any
-	}{
-		{
-			name: "nested parameter",
-			expr: `a.b[0] > 5`,
-			args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}},
-			want: true,
-		},
-		{
-			name: "json fast path",
-			expr: `$["a.b.0"] > 5`,
-			args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}},
-			want: true,
-		},
-		{
-			name: "json gjson fallback",
-			expr: `$["a.b.#"] == 2`,
-			args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}},
-			want: true,
-		},
-		{
-			name: "string concat",
-			expr: `1 + "2" + a`,
-			args: []any{map[string]any{"a": 3}},
-			want: "123",
-		},
-		{
-			name: "method call",
-			expr: `(date("2024-02-20") + duration("24h")).Format("2006-01-02")`,
-			want: "2024-02-21",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			compiled, err := Compile(tt.expr)
-			if err != nil {
-				t.Fatalf("Compile() error = %v", err)
-			}
-			got, err := compiled.Eval(tt.args...)
-			if err != nil {
-				t.Fatalf("Compiled Eval() error = %v", err)
-			}
-			if !reflect.DeepEqual(got.val, tt.want) {
-				t.Fatalf("Compiled Eval() = %#v, want %#v", got.val, tt.want)
-			}
-		})
-	}
-}
-
-func TestCompileWithFunc(t *testing.T) {
-	e := Full(
-		WithFunc("max", func(args ...any) (any, error) {
-			if len(args) == 0 {
-				return 0, nil
-			}
-			val := args[0].(float64)
-			for i := 1; i < len(args); i++ {
-				val = max(val, args[i].(float64))
-			}
-			return val, nil
+			count := NewValue("", args[0]).Int()
+			return strings.Repeat("0", count), nil
 		}),
 	)
-	compiled, err := e.Compile(`max(1, a, 3)`)
-	if err != nil {
-		t.Fatalf("Compile() error = %v", err)
+	params := map[string]any{
+		"a":    7,
+		"b":    2,
+		"abc":  7,
+		"flag": true,
+		"body": map[string]any{"cardBin": "123456"},
+		"tags": []string{"go", "eval"},
+		"idx":  1,
+		"name": "foo",
+		"nested": map[string]bool{
+			"ok": true,
+		},
+		"flags": []bool{true},
+		"foo bar": map[string]any{
+			"foo baz": map[string]any{"data": "baz"},
+		},
 	}
-	got, err := compiled.EvalFloat(map[string]any{"a": 6})
-	if err != nil {
-		t.Fatalf("Compiled EvalFloat() error = %v", err)
+	builtinParams := map[string]any{
+		"name":    "  GoEval  ",
+		"email":   "dev@company.com",
+		"tags":    []string{"go", "rules"},
+		"missing": nil,
 	}
-	if got != 6 {
-		t.Fatalf("Compiled EvalFloat() = %v, want 6", got)
-	}
-}
-
-func TestCompileEvalMap(t *testing.T) {
-	compiled, err := Compile(`a.b[0] > 5`)
-	if err != nil {
-		t.Fatalf("Compile() error = %v", err)
-	}
-	got, err := compiled.EvalMapBool(map[string]any{"a": map[string]any{"b": []int{7, 8}}})
-	if err != nil {
-		t.Fatalf("EvalMapBool() error = %v", err)
-	}
-	if !got {
-		t.Fatal("EvalMapBool() = false, want true")
-	}
-}
-
-func TestCompileConstantFolding(t *testing.T) {
-	tests := []struct {
-		expr string
-		args []any
-		want any
-	}{
-		{expr: `1000 / 2 > (80 * 100 % 2)`, want: true},
-		{expr: `"a" + "b" + 3`, want: "ab3"},
-		{expr: `(date("2024-02-20")).Format("2006-01-02")`, want: "2024-02-20"},
+	runExpressionCases(t, e, []expressionCase{
+		{name: "true literal", expr: `true`, want: true},
+		{name: "false literal", expr: `false`, want: false},
+		{name: "basic arithmetic bool", expr: `1 + 2 >= 3`, want: true},
+		{name: "grouped arithmetic bool", expr: `(1 + 2) > 5`, want: false},
+		{name: "parameter comparison", expr: `abc > 6`, args: []any{params}, want: true},
+		{name: "double quoted escape", expr: `str == "a\"bc"`, args: []any{map[string]any{"str": `a"bc`}}, want: true},
+		{name: "single quoted escape", expr: `str == 'a\'bc'`, args: []any{map[string]any{"str": `a'bc`}}, want: true},
+		{name: "backtick in string", expr: "str == 'a`bc'", args: []any{map[string]any{"str": "a`bc"}}, want: true},
+		{name: "string literal comparison", expr: `"abc" == "abc"`, want: true},
+		{name: "array membership miss", expr: `a in [3,4,5]`, args: []any{map[string]any{"a": 2}}, want: false},
+		{name: "array membership variable", expr: `a in [3,4,5,b]`, args: []any{map[string]any{"a": 7, "b": 7}}, want: true},
+		{name: "string array membership", expr: `a in b`, args: []any{map[string]any{"a": 7, "b": "[7]"}}, want: true},
+		{name: "slice membership", expr: `a in b`, args: []any{map[string]any{"a": 7, "b": []int{7}}}, want: true},
+		{name: "json path fast path", expr: `$["a.b.0"] > 5`, args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}}, want: true},
+		{name: "json path gjson fallback", expr: `$["a.b.#"] == 2`, args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}}, want: true},
+		{name: "underscore identifier", expr: `__hour > 6`, args: []any{map[string]any{"__hour": 7}}, want: true},
+		{name: "special nested parameter", expr: `$.["foo bar"].$.["foo baz"].data == "baz"`, args: []any{params}, want: true},
+		{name: "custom max function", expr: `max(1,2,3,a)`, args: []any{params}, want: float64(7)},
+		{name: "subtraction without spaces", expr: `16-6`, want: float64(10)},
+		{name: "subtraction space before right", expr: `16 -6`, want: float64(10)},
+		{name: "subtraction space after operator", expr: `16- 6`, want: float64(10)},
+		{name: "subtract negative number", expr: `16--6`, want: float64(22)},
+		{name: "leading negative number", expr: `-1+2`, want: float64(1)},
+		{name: "negative grouped expression", expr: `-(1+2)`, want: float64(-3)},
+		{name: "operator precedence", expr: `a*b+3`, args: []any{params}, want: float64(17)},
+		{name: "function argument expression", expr: `body.cardBin + randN(16 - strlen(body.cardBin))`, args: []any{params}, want: "1234560000000000"},
+		{name: "dynamic index", expr: `tags[idx] == "eval"`, args: []any{params}, want: true},
+		{name: "ternary", expr: `flag ? "yes" : "no"`, args: []any{params}, want: "yes"},
+		{name: "array item expression", expr: `a in [3, 7, b+5]`, args: []any{params}, want: true},
+		{name: "string concat number left", expr: `1 + "a"`, want: "1a"},
+		{name: "string concat number right", expr: `"a" + 1`, want: "a1"},
+		{name: "string concat strings", expr: `"a" + "b"`, want: "ab"},
+		{name: "string concat numeric string", expr: `1 + "2"`, want: "12"},
+		{name: "string concat chain", expr: `1 + "2" + 3`, want: "123"},
+		{name: "string subtraction", expr: `"hello world" - " world"`, want: "hello"},
+		{name: "compiled nested parameter", expr: `a.b[0] > 5`, args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}}, want: true},
+		{name: "compiled string concat", expr: `1 + "2" + a`, args: []any{params}, want: "127"},
+		{name: "method call", expr: `(date("2024-02-20") + duration("24h")).Format("2006-01-02")`, want: "2024-02-21"},
+		{name: "compile with custom function", expr: `max(1, a, 3)`, args: []any{params}, want: float64(7)},
+		{name: "eval map path", expr: `a.b[0] > 5`, args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}}, want: true},
+		{name: "constant folded arithmetic", expr: `1000 / 2 > (80 * 100 % 2)`, want: true},
+		{name: "constant folded string concat", expr: `"a" + "b" + 3`, want: "ab3"},
+		{name: "constant folded method", expr: `(date("2024-02-20")).Format("2006-01-02")`, want: "2024-02-20"},
+		{name: "duration subtraction", expr: `duration("48h") - duration("24h")`, want: time.Hour * 24},
+		{name: "duration threshold", expr: `1000 / 2 > threshold`, args: []any{map[string]any{"threshold": 499}}, want: true},
+		{name: "regex literal", expr: `name =~ "^fo+$"`, args: []any{params}, want: true},
+		{name: "typed path fast path", expr: `flags[0] && nested.ok`, args: []any{params}, want: true},
+		{name: "overridden builtin value", expr: `max(1, 2, 3)`, want: float64(3)},
+		{name: "builtin contains", expr: `contains(email, "@company.com")`, args: []any{builtinParams}, want: true},
+		{name: "builtin trim prefix suffix", expr: `startsWith(trim(name), "Go") && endsWith(trim(name), "Eval")`, args: []any{builtinParams}, want: true},
+		{name: "builtin lower upper", expr: `lower("GO") == "go" && upper("go") == "GO"`, args: []any{builtinParams}, want: true},
+		{name: "builtin replace", expr: `replace("go-eval-go", "go", "expr") == "expr-eval-expr"`, args: []any{builtinParams}, want: true},
+		{name: "builtin len", expr: `len(tags) == 2`, args: []any{builtinParams}, want: true},
+		{name: "builtin min max", expr: `min(3, 2, 5) == 2 && max(3, 2, 5) == 5`, args: []any{builtinParams}, want: true},
+		{name: "builtin abs round", expr: `abs(-3) == 3 && round(1.6) == 2`, args: []any{builtinParams}, want: true},
+		{name: "builtin conversions", expr: `int("3.9") == 3 && string(12) == "12" && bool("true")`, args: []any{builtinParams}, want: true},
+		{name: "builtin presence checks", expr: `exists(email) && !exists(missing) && empty(missing) && notEmpty(tags)`, args: []any{builtinParams}, want: true},
+		{name: "builtin coalesce default", expr: `coalesce("", 0, "ok") == "ok" && default("", "fallback") == "fallback"`, args: []any{builtinParams}, want: true},
+		{name: "builtin regex", expr: `matches(email, "^[^@]+@company\\.com$") && regex(email, "company")`, args: []any{builtinParams}, want: true},
+		{name: "builtin any all", expr: `any(false, "", true) && all(true, "true", true)`, args: []any{builtinParams}, want: true},
 		{
-			expr: `duration("48h") - duration("24h")`,
-			want: time.Hour * 24,
+			name: "nested method call",
+			expr: "a.b.c.Value(d,5)",
+			args: []any{
+				map[string]any{
+					"a": map[string]any{
+						"b": map[string]any{
+							"c": &S{},
+						},
+					},
+					"d": "abc",
+				},
+			},
+			want: []any{"abc", 5},
 		},
 		{
-			expr: `1000 / 2 > threshold`,
-			args: []any{map[string]any{"threshold": 499}},
+			name: "nested index",
+			expr: "a.b.c[0]",
+			args: []any{
+				map[string]any{
+					"a": map[string]any{
+						"b": map[string]any{
+							"c": []int{1, 2, 3},
+						},
+					},
+				},
+			},
+			want: float64(1),
+		},
+		{
+			name: "nested index comparison",
+			expr: "a.b.c[0] == 1",
+			args: []any{
+				map[string]any{
+					"a": map[string]any{
+						"b": map[string]any{
+							"c": []int{1, 2, 3},
+						},
+					},
+				},
+			},
 			want: true,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.expr, func(t *testing.T) {
-			compiled, err := Compile(tt.expr)
-			if err != nil {
-				t.Fatalf("Compile() error = %v", err)
-			}
-			got, err := compiled.Eval(tt.args...)
-			if err != nil {
-				t.Fatalf("Compiled Eval() error = %v", err)
-			}
-			if !reflect.DeepEqual(got.val, tt.want) {
-				t.Fatalf("Compiled Eval() = %#v, want %#v", got.val, tt.want)
-			}
-		})
-	}
+		{
+			name: "nested value",
+			expr: "a.b.c",
+			args: []any{
+				map[string]any{
+					"a": map[string]any{
+						"b": map[string]any{
+							"c": []int{1, 2, 3},
+						},
+					},
+				},
+			},
+			want: []int{1, 2, 3},
+		},
+		{name: "date minus duration", expr: `(date("2024-02-20") - duration("24h")).Format("2006-01-02")`, want: "2024-02-19"},
+		{name: "date plus duration", expr: `(date("2024-02-20") + duration("24h")).Format("2006-01-02")`, want: "2024-02-21"},
+		{name: "duration multiply", expr: `duration("24h") * 2`, want: time.Hour * 48},
+	})
 }
 
 func TestCompileShortCircuit(t *testing.T) {
@@ -437,38 +293,9 @@ func TestCompileShortCircuitEvaluatesNeededBranch(t *testing.T) {
 	}
 }
 
-func TestCompileRegexLiteral(t *testing.T) {
-	compiled, err := Compile(`name =~ "^fo+$"`)
-	if err != nil {
-		t.Fatalf("Compile() error = %v", err)
-	}
-	got, err := compiled.EvalBool(map[string]any{"name": "foo"})
-	if err != nil {
-		t.Fatalf("Compiled EvalBool() error = %v", err)
-	}
-	if !got {
-		t.Fatal("Compiled EvalBool() = false, want true")
-	}
-
+func TestCompileInvalidRegexLiteral(t *testing.T) {
 	if _, err := Compile(`name =~ "["`); err == nil {
 		t.Fatal("Compile() error = nil, want invalid regexp error")
-	}
-}
-
-func TestCompileTypedPathFastPaths(t *testing.T) {
-	compiled, err := Compile(`flags[0] && nested.ok`)
-	if err != nil {
-		t.Fatalf("Compile() error = %v", err)
-	}
-	got, err := compiled.EvalMapBool(map[string]any{
-		"flags":  []bool{true},
-		"nested": map[string]bool{"ok": true},
-	})
-	if err != nil {
-		t.Fatalf("Compiled EvalMapBool() error = %v", err)
-	}
-	if !got {
-		t.Fatal("Compiled EvalMapBool() = false, want true")
 	}
 }
 
@@ -543,44 +370,6 @@ func TestVariables(t *testing.T) {
 	}
 }
 
-func TestBuiltins(t *testing.T) {
-	params := map[string]any{
-		"name":    "  GoEval  ",
-		"email":   "dev@company.com",
-		"tags":    []string{"go", "rules"},
-		"missing": nil,
-	}
-	tests := []struct {
-		expr string
-		want bool
-	}{
-		{expr: `contains(email, "@company.com")`, want: true},
-		{expr: `startsWith(trim(name), "Go") && endsWith(trim(name), "Eval")`, want: true},
-		{expr: `lower("GO") == "go" && upper("go") == "GO"`, want: true},
-		{expr: `replace("go-eval-go", "go", "expr") == "expr-eval-expr"`, want: true},
-		{expr: `len(tags) == 2`, want: true},
-		{expr: `min(3, 2, 5) == 2 && max(3, 2, 5) == 5`, want: true},
-		{expr: `abs(-3) == 3 && round(1.6) == 2`, want: true},
-		{expr: `int("3.9") == 3 && string(12) == "12" && bool("true")`, want: true},
-		{expr: `exists(email) && !exists(missing) && empty(missing) && notEmpty(tags)`, want: true},
-		{expr: `coalesce("", 0, "ok") == "ok" && default("", "fallback") == "fallback"`, want: true},
-		{expr: `matches(email, "^[^@]+@company\\.com$") && regex(email, "company")`, want: true},
-		{expr: `any(false, "", true) && all(true, "true", true)`, want: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.expr, func(t *testing.T) {
-			got, err := EvalBool(tt.expr, params)
-			if err != nil {
-				t.Fatalf("EvalBool() error = %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("EvalBool() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestErrorPosition(t *testing.T) {
 	_, err := EvalBool("a @ 1", map[string]any{"a": 1})
 	if err == nil {
@@ -630,6 +419,15 @@ func TestExplain(t *testing.T) {
 	if called != 0 {
 		t.Fatalf("short-circuited function called %d times", called)
 	}
+
+	steps, err = Explain(`-(1+2)`)
+	if err != nil {
+		t.Fatalf("Explain() unary error = %v", err)
+	}
+	last = steps[len(steps)-1]
+	if last.Value != float64(-3) || last.Type != "number" {
+		t.Fatalf("last unary step = %#v, want -3 number", last)
+	}
 }
 
 func TestDependencies(t *testing.T) {
@@ -652,17 +450,11 @@ func TestDependencies(t *testing.T) {
 }
 
 func TestCustomFunctionOverridesDefault(t *testing.T) {
-	got, err := Full(
+	assertEvalAndCompile(t, Full(
 		WithFunc("max", func(args ...any) (any, error) {
 			return 42, nil
 		}),
-	).EvalInt(`max(1, 2, 3)`)
-	if err != nil {
-		t.Fatalf("EvalInt() error = %v", err)
-	}
-	if got != 42 {
-		t.Fatalf("EvalInt() = %v, want 42", got)
-	}
+	), `max(1, 2, 3)`, float64(42))
 }
 
 func TestOverriddenBuiltinIsNotConstantFolded(t *testing.T) {
@@ -699,149 +491,4 @@ type S struct {
 
 func (s *S) Value(a string, b int) (string, int) {
 	return a, b
-}
-
-func TestNested(t *testing.T) {
-	type args struct {
-		expr string
-		args []any
-	}
-	tests := []struct {
-		args    args
-		want    any
-		wantErr bool
-	}{
-		{
-			args: args{
-				expr: "a.b.c.Value(d,5)",
-				args: []any{
-					map[string]any{
-						"a": map[string]any{
-							"b": map[string]any{
-								"c": &S{},
-							},
-						},
-						"d": "abc",
-					},
-				},
-			},
-			want:    []any{"abc", 5},
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a.b.c[0]",
-				args: []any{
-					map[string]any{
-						"a": map[string]any{
-							"b": map[string]any{
-								"c": []int{1, 2, 3},
-							},
-						},
-					},
-				},
-			},
-			want:    float64(1),
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a.b.c[0] == 1",
-				args: []any{
-					map[string]any{
-						"a": map[string]any{
-							"b": map[string]any{
-								"c": []int{1, 2, 3},
-							},
-						},
-					},
-				},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: "a.b.c",
-				args: []any{
-					map[string]any{
-						"a": map[string]any{
-							"b": map[string]any{
-								"c": []int{1, 2, 3},
-							},
-						},
-					},
-				},
-			},
-			want:    []int{1, 2, 3},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.args.expr, func(t *testing.T) {
-			v, _, err := Eval(tt.args.expr, tt.args.args...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Eval() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !reflect.DeepEqual(v.val, tt.want) {
-				t.Errorf("Eval() got = %#v, want %#v", v.val, tt.want)
-			}
-		})
-	}
-}
-
-func TestTimeAndDuration(t *testing.T) {
-	type args struct {
-		expr string
-		args []any
-	}
-	tests := []struct {
-		args    args
-		want    any
-		wantErr bool
-	}{
-		{
-			args: args{
-				expr: `(date("2024-02-20") - duration("24h")).Format("2006-01-02")`,
-				args: []any{},
-			},
-			want:    "2024-02-19",
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `(date("2024-02-20") + duration("24h")).Format("2006-01-02")`,
-				args: []any{},
-			},
-			want:    "2024-02-21",
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `duration("48h") - duration("24h")`,
-				args: []any{},
-			},
-			want:    time.Hour * 24,
-			wantErr: false,
-		},
-		{
-			args: args{
-				expr: `duration("24h") * 2`,
-				args: []any{},
-			},
-			want:    time.Hour * 48,
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.args.expr, func(t *testing.T) {
-			v, _, err := Eval(tt.args.expr, tt.args.args...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Eval() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !reflect.DeepEqual(v.val, tt.want) {
-				t.Errorf("Eval() got = %#v, want %#v", v.val, tt.want)
-			}
-		})
-	}
 }

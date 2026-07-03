@@ -40,14 +40,14 @@ func (e *Evaluable) Compile(expr string) (compiled *CompiledExpression, err erro
 		}
 	}()
 	lex := newLexer(expr, nil, e.fns, false)
-	lex.build = true
 	defer lex.release()
-	parseWithPool(lex)
+	compileLex := &compileLexerAdapter{lexer: lex}
+	compileParseWithPool(compileLex)
 	if lex.err != nil {
 		return nil, lex.err
 	}
 	compiled = &CompiledExpression{
-		root: foldNode(asExprNode(lex.answer), foldContext{
+		root: foldNode(compileLex.answer, foldContext{
 			fns:         e.fns,
 			foldableFns: e.foldableFns,
 		}),
@@ -231,12 +231,7 @@ type unaryNode struct {
 }
 
 func (n unaryNode) Eval(ctx *evalContext) Value {
-	switch n.op {
-	case "!":
-		return n.x.Eval(ctx).Not()
-	default:
-		panic(fmt.Errorf("unsupported unary operator %s", n.op))
-	}
+	return evalUnaryValue(n.op, n.x.Eval(ctx))
 }
 
 type binaryOp uint8
@@ -312,25 +307,45 @@ type binaryNode struct {
 
 func (n binaryNode) Eval(ctx *evalContext) Value {
 	left := n.left.Eval(ctx)
-	switch n.op {
+	if val, ok := evalBinaryShortCircuit(n.op, left); ok {
+		return val
+	}
+	return evalBinaryValue(n.op, left, n.right.Eval(ctx))
+}
+
+func evalUnaryValue(op string, x Value) Value {
+	switch op {
+	case "!":
+		return x.Not()
+	case "-":
+		return NewValue("", float64(0)).Sub(x)
+	default:
+		panic(fmt.Errorf("unsupported unary operator %s", op))
+	}
+}
+
+func evalBinaryShortCircuit(op binaryOp, left Value) (Value, bool) {
+	switch op {
 	case opAnd:
 		if !left.Boolean() {
-			return left
+			return left, true
 		}
-		return n.right.Eval(ctx)
 	case opOr:
 		if left.Boolean() {
-			return left
+			return left, true
 		}
-		return n.right.Eval(ctx)
 	case opNc:
-		if isCoalesceEmpty(left) {
-			return n.right.Eval(ctx)
+		if !isCoalesceEmpty(left) {
+			return left, true
 		}
-		return left
+	default:
+		return nilValue, false
 	}
-	right := n.right.Eval(ctx)
-	switch n.op {
+	return nilValue, false
+}
+
+func evalBinaryValue(op binaryOp, left, right Value) Value {
+	switch op {
 	case opEq:
 		return left.Eq(right)
 	case opNeq:
@@ -361,8 +376,10 @@ func (n binaryNode) Eval(ctx *evalContext) Value {
 		return left.Div(right)
 	case opMod:
 		return left.Mod(right)
+	case opAnd, opOr, opNc:
+		return right
 	default:
-		panic(fmt.Errorf("unsupported binary operator %s", n.op))
+		panic(fmt.Errorf("unsupported binary operator %s", op))
 	}
 }
 
@@ -772,57 +789,20 @@ func (c *variableCollector) collectAll(nodes []exprNode) {
 	}
 }
 
-func (lex *lexer) value(val Value) Value {
-	if lex.build {
-		return astValue(literalNode{value: val})
-	}
-	return val
-}
-
 func (lex *lexer) param(val Value) any {
-	if lex.build {
-		return asExprNode(val)
-	}
 	return val.val
 }
 
-func selectIndexExpr(base Value, key Value) exprNode {
+func selectIndexExpr(base exprNode, key exprNode) exprNode {
 	node := selectIndexNode{
-		base: asExprNode(base),
-		key:  asExprNode(key),
+		base: base,
+		key:  key,
 	}
 	if literal, ok := node.key.(literalNode); ok {
 		node.staticKey = literal.value.String()
 		node.hasStaticKey = true
 	}
 	return node
-}
-
-func astValue(node exprNode) Value {
-	return Value{val: node, vType: Interface}
-}
-
-func asExprNode(val Value) exprNode {
-	node, ok := val.val.(exprNode)
-	if !ok {
-		panic(fmt.Errorf("compiled expression expected node, got %T", val.val))
-	}
-	return node
-}
-
-func exprNodes(vals []any) []exprNode {
-	if len(vals) == 0 {
-		return nil
-	}
-	nodes := make([]exprNode, len(vals))
-	for i, val := range vals {
-		node, ok := val.(exprNode)
-		if !ok {
-			panic(fmt.Errorf("compiled expression expected node argument, got %T", val))
-		}
-		nodes[i] = node
-	}
-	return nodes
 }
 
 func evalJSONPath(kv map[string]any, path string) Value {

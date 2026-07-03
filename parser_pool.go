@@ -18,3 +18,20 @@ func parseWithPool(lex yyLexer) int {
 	}()
 	return parser.Parse(lex)
 }
+
+var compileParserPool = sync.Pool{
+	New: func() any {
+		return new(compileParserImpl)
+	},
+}
+
+func compileParseWithPool(lex compileLexer) int {
+	parser := compileParserPool.Get().(*compileParserImpl)
+	defer func() {
+		parser.lval = compileSymType{}
+		parser.stack = [compileInitialStackSize]compileSymType{}
+		parser.char = 0
+		compileParserPool.Put(parser)
+	}()
+	return parser.Parse(lex)
+}
