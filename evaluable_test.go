@@ -230,8 +230,32 @@ func TestEvalAndCompileModes(t *testing.T) {
 		},
 		{name: "date minus duration", expr: `(date("2024-02-20") - duration("24h")).Format("2006-01-02")`, want: "2024-02-19"},
 		{name: "date plus duration", expr: `(date("2024-02-20") + duration("24h")).Format("2006-01-02")`, want: "2024-02-21"},
+		{name: "date with location", expr: `(date("2024-02-20 10:30:00", "Asia/Shanghai")).Format("2006-01-02 15:04 MST")`, want: "2024-02-20 10:30 CST"},
+		{name: "date with location and format", expr: `(date("2024/02/20 10:30", "Asia/Shanghai", "2006/01/02 15:04")).Format("2006-01-02 15:04 MST")`, want: "2024-02-20 10:30 CST"},
+		{name: "date timestamp with utc", expr: `(date(0, "UTC")).Format("2006-01-02 15:04 MST")`, want: "1970-01-01 00:00 UTC"},
+		{name: "date timestamp with location", expr: `(date(0, "Asia/Shanghai")).Format("2006-01-02 15:04 MST")`, want: "1970-01-01 08:00 CST"},
 		{name: "duration multiply", expr: `duration("24h") * 2`, want: time.Hour * 48},
 	})
+}
+
+func TestDateArgumentErrors(t *testing.T) {
+	tests := []string{
+		`date()`,
+		`date("2024-02-20", 1)`,
+		`date("2024-02-20", "Bad/Location")`,
+		`date("2024-02-20", "UTC", 1)`,
+		`date("2024/02/20", "UTC", "2006-01-02")`,
+	}
+	for _, expr := range tests {
+		t.Run(expr, func(t *testing.T) {
+			if _, _, err := Full().Eval(expr); err == nil {
+				t.Fatal("Eval() error = nil, want error")
+			}
+			if _, err := Full().Compile(expr); err == nil {
+				t.Fatal("Compile() error = nil, want error")
+			}
+		})
+	}
 }
 
 func TestCompileShortCircuit(t *testing.T) {

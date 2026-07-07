@@ -15,6 +15,7 @@ GoEval can evaluate expressions with parameters, arimethetic, logical, and strin
 - float64 expression: `(mem_used / total_mem) * 100`
 - date comparator: `date(`2022-05-02`) > date(`2022-05-01 23:59:59`)`
 - date timestamp comparator: `date(1651467728) > date("2022-05-01 23:59:59")`
+- date location and format: `date("2024/02/20 10:30", "Asia/Shanghai", "2006/01/02 15:04")`
 - `strlen("someReallyLongInputString") <= 16`
 - compiled expression: `compiled, err := goeval.Compile("foo > 0")`
 - expression validation: `err := goeval.Validate("foo > 0")`

@@ -57,28 +57,50 @@ func builtinNow(args ...any) (any, error) {
 }
 
 func builtinDate(args ...any) (any, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("date() expects exactly one argument")
+	if len(args) < 1 || len(args) > 3 {
+		return nil, fmt.Errorf("date() expects 1 to 3 arguments")
 	}
-	arg := args[0]
+	loc := time.Local
+	if len(args) >= 2 {
+		parsedLoc, err := parseDateLocation(args[1])
+		if err != nil {
+			return nil, err
+		}
+		loc = parsedLoc
+	}
+	if len(args) == 3 {
+		format, ok := args[2].(string)
+		if !ok {
+			return nil, fmt.Errorf("date() expects a string format argument")
+		}
+		return parseDateValue(args[0], loc, []string{format})
+	}
+	return parseDateValue(args[0], loc, defaultDateFormats())
+}
+
+func parseDateLocation(arg any) (*time.Location, error) {
+	name, ok := arg.(string)
+	if !ok {
+		return nil, fmt.Errorf("date() expects a string location argument")
+	}
+	switch name {
+	case "Local", "":
+		return time.Local, nil
+	case "UTC":
+		return time.UTC, nil
+	default:
+		loc, err := time.LoadLocation(name)
+		if err != nil {
+			return nil, fmt.Errorf("date() invalid location %q: %w", name, err)
+		}
+		return loc, nil
+	}
+}
+
+func parseDateValue(arg any, loc *time.Location, formats []string) (any, error) {
 	if s, ok := arg.(string); ok {
-		for _, format := range [...]string{
-			time.ANSIC,
-			time.UnixDate,
-			time.RubyDate,
-			time.Kitchen,
-			time.RFC3339,
-			time.RFC3339Nano,
-			"2006-01-02",                         // RFC 3339
-			"2006-01-02 15:04",                   // RFC 3339 with minutes
-			"2006-01-02 15:04:05",                // RFC 3339 with seconds
-			"2006-01-02 15:04:05-07:00",          // RFC 3339 with seconds and timezone
-			"2006-01-02T15Z0700",                 // ISO8601 with hour
-			"2006-01-02T15:04Z0700",              // ISO8601 with minutes
-			"2006-01-02T15:04:05Z0700",           // ISO8601 with seconds
-			"2006-01-02T15:04:05.999999999Z0700", // ISO8601 with nanoseconds
-		} {
-			ret, err := time.ParseInLocation(format, s, time.Local)
+		for _, format := range formats {
+			ret, err := time.ParseInLocation(format, s, loc)
 			if err == nil {
 				return ret, nil
 			}
@@ -86,10 +108,29 @@ func builtinDate(args ...any) (any, error) {
 	} else {
 		value := NewValue("", arg)
 		if value.vType == Number {
-			return time.Unix(int64(value.Float()), 0), nil
+			return time.Unix(int64(value.Float()), 0).In(loc), nil
 		}
 	}
 	return nil, fmt.Errorf("date() expects a string or a number argument")
+}
+
+func defaultDateFormats() []string {
+	return []string{
+		time.ANSIC,
+		time.UnixDate,
+		time.RubyDate,
+		time.Kitchen,
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02",                         // RFC 3339
+		"2006-01-02 15:04",                   // RFC 3339 with minutes
+		"2006-01-02 15:04:05",                // RFC 3339 with seconds
+		"2006-01-02 15:04:05-07:00",          // RFC 3339 with seconds and timezone
+		"2006-01-02T15Z0700",                 // ISO8601 with hour
+		"2006-01-02T15:04Z0700",              // ISO8601 with minutes
+		"2006-01-02T15:04:05Z0700",           // ISO8601 with seconds
+		"2006-01-02T15:04:05.999999999Z0700", // ISO8601 with nanoseconds
+	}
 }
 
 func builtinStrlen(args ...any) (any, error) {
