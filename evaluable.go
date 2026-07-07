@@ -15,6 +15,7 @@ type Evaluable struct {
 	fns         map[string]Func
 	foldableFns map[string]struct{}
 	cache       *compileCache
+	useDecimal  bool
 }
 
 type Func func(...any) (any, error)
@@ -40,6 +41,12 @@ func withFoldableFunc(name string, fn Func) Option {
 func WithCompileCache(size int) Option {
 	return func(e *Evaluable) {
 		e.cache = newCompileCache(size)
+	}
+}
+
+func WithDecimal(use bool) Option {
+	return func(e *Evaluable) {
+		e.useDecimal = use
 	}
 }
 
@@ -88,7 +95,7 @@ func (e *Evaluable) eval(expr string, collectTokens bool, args ...any) (val Valu
 	if err != nil {
 		return nilValue, nil, err
 	}
-	lex := newLexer(expr, pArgs, e.fns, collectTokens)
+	lex := newLexer(expr, pArgs, e.fns, collectTokens, e.useDecimal)
 	defer lex.release()
 	parseWithPool(lex)
 	return lex.answer, lex.tokens, lex.err
@@ -107,7 +114,7 @@ func (e *Evaluable) EvalInt(expr string, args ...any) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Int(), nil
+	return safeValueInt(val)
 }
 
 func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
@@ -115,7 +122,7 @@ func (e *Evaluable) EvalFloat(expr string, args ...any) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Float(), nil
+	return safeValueFloat(val)
 }
 
 func (e *Evaluable) EvalString(expr string, args ...any) (string, error) {
@@ -235,4 +242,11 @@ func (c *compileCache) set(expr string, compiled *CompiledExpression) {
 		c.order = append(c.order, expr)
 	}
 	c.values[expr] = compiled
+}
+
+func compileCacheKey(expr string, useDecimal bool) string {
+	if !useDecimal {
+		return expr
+	}
+	return "decimal\x00" + expr
 }

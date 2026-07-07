@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func defaultOptions() []Option {
@@ -15,6 +17,7 @@ func defaultOptions() []Option {
 		withFoldableFunc("strlen", builtinStrlen),
 		withFoldableFunc("duration", builtinDuration),
 		withFoldableFunc("float", builtinFloat),
+		withFoldableFunc("decimal", builtinDecimal),
 		WithFunc("now", builtinNow),
 	}
 	return append(opts, builtinOptions()...)
@@ -80,8 +83,11 @@ func builtinDate(args ...any) (any, error) {
 				return ret, nil
 			}
 		}
-	} else if f, ok := arg.(float64); ok {
-		return time.Unix(int64(f), 0), nil
+	} else {
+		value := NewValue("", arg)
+		if value.vType == Number {
+			return time.Unix(int64(value.Float()), 0), nil
+		}
 	}
 	return nil, fmt.Errorf("date() expects a string or a number argument")
 }
@@ -108,10 +114,13 @@ func builtinDuration(args ...any) (any, error) {
 	switch arg := args[0].(type) {
 	case string:
 		d, err = time.ParseDuration(arg)
-	case float64:
-		d = time.Duration(arg)
 	default:
-		err = fmt.Errorf("duration() expects a string or a number argument")
+		value := NewValue("", arg)
+		if value.vType != Number {
+			err = fmt.Errorf("duration() expects a string or a number argument")
+			break
+		}
+		d = time.Duration(value.Float())
 	}
 	if err != nil {
 		return nil, err
@@ -154,7 +163,35 @@ func builtinFloat(args ...any) (any, error) {
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return arg, nil
 	default:
+		value := NewValue("", arg)
+		if value.vType == Number {
+			return value.Float(), nil
+		}
 		return nil, fmt.Errorf("float() expects a string or a number argument")
+	}
+}
+
+func builtinDecimal(args ...any) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("decimal() expects exactly one argument")
+	}
+	switch arg := args[0].(type) {
+	case decimal.Decimal:
+		return arg, nil
+	case string:
+		d, err := decimal.NewFromString(arg)
+		if err != nil {
+			return nil, fmt.Errorf("decimal() expects a valid decimal string: %w", err)
+		}
+		return d, nil
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return convertNumberToDecimal(arg), nil
+	default:
+		value := NewValue("", arg)
+		if value.vType == Number {
+			return value.Decimal(), nil
+		}
+		return nil, fmt.Errorf("decimal() expects a string or a number argument")
 	}
 }
 

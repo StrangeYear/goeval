@@ -4,14 +4,13 @@ package goeval
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/tidwall/gjson"
 )
 
-//line lexer.go:17
+//line lexer.go:16
 var _expression_actions []byte = []byte{
 	0, 1, 0, 1, 1, 1, 2, 1, 12,
 	1, 13, 1, 14, 1, 15, 1, 16,
@@ -233,7 +232,7 @@ const expression_error int = -1
 
 const expression_en_main int = 43
 
-//line lexer.rl:19
+//line lexer.rl:18
 
 type lexer struct {
 	data          string
@@ -245,6 +244,7 @@ type lexer struct {
 	tokens        []string
 	collectTokens bool
 	fns           map[string]Func
+	useDecimal    bool
 	jsonParsed    bool
 	json          gjson.Result
 }
@@ -284,7 +284,7 @@ func (lex *lexer) errorAt(pos int, format string, args ...any) error {
 	return fmt.Errorf("%s at line %d, column %d", fmt.Sprintf(format, args...), line, column)
 }
 
-func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens bool) *lexer {
+func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens bool, useDecimal bool) *lexer {
 	lex := lexerPool.Get().(*lexer)
 	*lex = lexer{
 		data:          data,
@@ -292,9 +292,10 @@ func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens
 		kv:            kv,
 		fns:           fns,
 		collectTokens: collectTokens,
+		useDecimal:    useDecimal,
 	}
 
-//line lexer.go:302
+//line lexer.go:303
 	{
 		lex.cs = expression_start
 		lex.ts = 0
@@ -302,8 +303,12 @@ func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens
 		lex.act = 0
 	}
 
-//line lexer.rl:80
+//line lexer.rl:81
 	return lex
+}
+
+func (lex *lexer) newValue(name string, val any) Value {
+	return newValue(name, val, lex.useDecimal)
 }
 
 func (lex *lexer) release() {
@@ -320,7 +325,7 @@ type lexeme struct {
 
 func (lex *lexer) jsonPathValue(path string) Value {
 	if val, ok := SelectPath(lex.kv, path); ok {
-		return NewValue(path, val)
+		return lex.newValue(path, val)
 	}
 	if !lex.jsonParsed {
 		bs, err := json.Marshal(lex.kv)
@@ -330,7 +335,7 @@ func (lex *lexer) jsonPathValue(path string) Value {
 		lex.json = gjson.ParseBytes(bs)
 		lex.jsonParsed = true
 	}
-	return NewValue(path, lex.json.Get(path))
+	return lex.newValue(path, lex.json.Get(path))
 }
 
 func (lex *lexer) next() (int, lexeme) {
@@ -338,7 +343,7 @@ func (lex *lexer) next() (int, lexeme) {
 	tok := 0
 	var item lexeme
 
-//line lexer.go:347
+//line lexer.go:352
 	{
 		var _klen int
 		var _trans int
@@ -359,7 +364,7 @@ func (lex *lexer) next() (int, lexeme) {
 //line NONE:1
 				lex.ts = (lex.p)
 
-//line lexer.go:367
+//line lexer.go:372
 			}
 		}
 
@@ -435,34 +440,34 @@ func (lex *lexer) next() (int, lexeme) {
 				lex.te = (lex.p) + 1
 
 			case 3:
-//line lexer.rl:156
+//line lexer.rl:157
 				lex.act = 1
 			case 4:
-//line lexer.rl:116
+//line lexer.rl:121
 				lex.act = 3
 			case 5:
-//line lexer.rl:188
+//line lexer.rl:189
 				lex.act = 4
 			case 6:
-//line lexer.rl:202
+//line lexer.rl:203
 				lex.act = 14
 			case 7:
-//line lexer.rl:127
+//line lexer.rl:132
 				lex.act = 15
 			case 8:
-//line lexer.rl:142
+//line lexer.rl:147
 				lex.act = 17
 			case 9:
-//line lexer.rl:121
+//line lexer.rl:126
 				lex.act = 18
 			case 10:
-//line lexer.rl:132
+//line lexer.rl:137
 				lex.act = 19
 			case 11:
-//line lexer.rl:211
+//line lexer.rl:212
 				lex.act = 22
 			case 12:
-//line lexer.rl:156
+//line lexer.rl:157
 				lex.te = (lex.p) + 1
 				{
 					tok = VALUE
@@ -477,13 +482,13 @@ func (lex *lexer) next() (int, lexeme) {
 							val = strings.ReplaceAll(val, "\\`", "`")
 						}
 					}
-					item.val = NewValue("", val[1:len(val)-1])
+					item.val = lex.newValue("", val[1:len(val)-1])
 					(lex.p)++
 					goto _out
 
 				}
 			case 13:
-//line lexer.rl:191
+//line lexer.rl:192
 				lex.te = (lex.p) + 1
 				{
 					tok = EQ
@@ -491,7 +496,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 14:
-//line lexer.rl:192
+//line lexer.rl:193
 				lex.te = (lex.p) + 1
 				{
 					tok = NEQ
@@ -499,7 +504,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 15:
-//line lexer.rl:193
+//line lexer.rl:194
 				lex.te = (lex.p) + 1
 				{
 					tok = GTE
@@ -507,7 +512,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 16:
-//line lexer.rl:194
+//line lexer.rl:195
 				lex.te = (lex.p) + 1
 				{
 					tok = LTE
@@ -515,7 +520,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 17:
-//line lexer.rl:195
+//line lexer.rl:196
 				lex.te = (lex.p) + 1
 				{
 					tok = RE
@@ -523,7 +528,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 18:
-//line lexer.rl:196
+//line lexer.rl:197
 				lex.te = (lex.p) + 1
 				{
 					tok = NRE
@@ -531,7 +536,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 19:
-//line lexer.rl:197
+//line lexer.rl:198
 				lex.te = (lex.p) + 1
 				{
 					tok = AND
@@ -539,7 +544,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 20:
-//line lexer.rl:198
+//line lexer.rl:199
 				lex.te = (lex.p) + 1
 				{
 					tok = OR
@@ -547,7 +552,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 21:
-//line lexer.rl:199
+//line lexer.rl:200
 				lex.te = (lex.p) + 1
 				{
 					tok = NC
@@ -555,7 +560,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 22:
-//line lexer.rl:142
+//line lexer.rl:147
 				lex.te = (lex.p) + 1
 				{
 					tok = IDENTIFIER
@@ -565,7 +570,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 23:
-//line lexer.rl:121
+//line lexer.rl:126
 				lex.te = (lex.p) + 1
 				{
 					tok = VALUE
@@ -576,7 +581,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 24:
-//line lexer.rl:132
+//line lexer.rl:137
 				lex.te = (lex.p) + 1
 				{
 					tok = IDENTIFIER
@@ -586,7 +591,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 25:
-//line lexer.rl:210
+//line lexer.rl:211
 				lex.te = (lex.p) + 1
 				{
 					tok = int(lex.data[lex.ts])
@@ -594,28 +599,24 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 26:
-//line lexer.rl:211
+//line lexer.rl:212
 				lex.te = (lex.p) + 1
 				{
 					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 27:
-//line lexer.rl:147
+//line lexer.rl:152
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					tok = VALUE
-					n, err := strconv.ParseFloat(lex.token(), 64)
-					if err != nil {
-						panic(err)
-					}
-					item.val = NewValue("", n)
+					item.val = newNumberLiteral("", lex.token(), lex.useDecimal)
 					(lex.p)++
 					goto _out
 
 				}
 			case 28:
-//line lexer.rl:127
+//line lexer.rl:132
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -626,7 +627,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 29:
-//line lexer.rl:137
+//line lexer.rl:142
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -637,7 +638,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 30:
-//line lexer.rl:142
+//line lexer.rl:147
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -648,7 +649,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 31:
-//line lexer.rl:121
+//line lexer.rl:126
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -660,7 +661,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 32:
-//line lexer.rl:132
+//line lexer.rl:137
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -671,12 +672,12 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 33:
-//line lexer.rl:209
+//line lexer.rl:210
 				lex.te = (lex.p)
 				(lex.p)--
 
 			case 34:
-//line lexer.rl:210
+//line lexer.rl:211
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -685,28 +686,24 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 35:
-//line lexer.rl:211
+//line lexer.rl:212
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 36:
-//line lexer.rl:147
+//line lexer.rl:152
 				(lex.p) = (lex.te) - 1
 				{
 					tok = VALUE
-					n, err := strconv.ParseFloat(lex.token(), 64)
-					if err != nil {
-						panic(err)
-					}
-					item.val = NewValue("", n)
+					item.val = newNumberLiteral("", lex.token(), lex.useDecimal)
 					(lex.p)++
 					goto _out
 
 				}
 			case 37:
-//line lexer.rl:211
+//line lexer.rl:212
 				(lex.p) = (lex.te) - 1
 				{
 					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
@@ -730,7 +727,7 @@ func (lex *lexer) next() (int, lexeme) {
 								val = strings.ReplaceAll(val, "\\`", "`")
 							}
 						}
-						item.val = NewValue("", val[1:len(val)-1])
+						item.val = lex.newValue("", val[1:len(val)-1])
 						(lex.p)++
 						goto _out
 
@@ -740,7 +737,7 @@ func (lex *lexer) next() (int, lexeme) {
 						(lex.p) = (lex.te) - 1
 
 						tok = VALUE
-						item.val = NewValue("", lex.token() == "true")
+						item.val = lex.newValue("", lex.token() == "true")
 						(lex.p)++
 						goto _out
 
@@ -808,7 +805,7 @@ func (lex *lexer) next() (int, lexeme) {
 					}
 				}
 
-//line lexer.go:744
+//line lexer.go:741
 			}
 		}
 
@@ -823,7 +820,7 @@ func (lex *lexer) next() (int, lexeme) {
 //line NONE:1
 				lex.ts = 0
 
-//line lexer.go:758
+//line lexer.go:755
 			}
 		}
 
@@ -846,7 +843,7 @@ func (lex *lexer) next() (int, lexeme) {
 		}
 	}
 
-//line lexer.rl:215
+//line lexer.rl:216
 
 	if tok != 0 && lex.collectTokens {
 		lex.tokens = append(lex.tokens, lex.token())

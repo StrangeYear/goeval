@@ -34,7 +34,7 @@ expr:
     }
     | '[' params ']'
     {
-        $$ = NewValue("", $2)
+        $$ = yylex.(*lexer).newValue("", $2)
     }
     | IDENTIFIER '(' params ')'
     {
@@ -46,7 +46,7 @@ expr:
         if err != nil {
             panic(err)
         }
-        $$ = NewValue("", res)
+        $$ = yylex.(*lexer).newValue("", res)
     }
     | quote
     | nested
@@ -61,13 +61,13 @@ quote:
     {
         val := SelectValue($1.val, $2)
         name := $1.name + "." + $2
-        $$ = NewValue(name, val)
+        $$ = yylex.(*lexer).newValue(name, val)
     }
     | quote '[' expr ']'
     {
         val := SelectValue($1.val, $3.String())
         name := indexName($1.name, $3)
-        $$ = NewValue(name, val)
+        $$ = yylex.(*lexer).newValue(name, val)
     }
     | quote '(' params ')'
     {
@@ -77,26 +77,26 @@ quote:
             panic(err)
         }
         name := callName($1.name)
-        $$ = NewValue(name, val)
+        $$ = yylex.(*lexer).newValue(name, val)
     }
 
 nested:
     IDENTIFIER
     {
         val := yylex.(*lexer).kv[$1]
-        $$ = NewValue($1, val)
+        $$ = yylex.(*lexer).newValue($1, val)
     }
     | nested IDENTIFIER
     {
         val := SelectValue($1.val, $2)
         name := $1.name + "." + $2
-        $$ = NewValue(name, val)
+        $$ = yylex.(*lexer).newValue(name, val)
     }
     | nested '[' expr ']'
     {
         val := SelectValue($1.val, $3.String())
         name := indexName($1.name, $3)
-        $$ = NewValue(name, val)
+        $$ = yylex.(*lexer).newValue(name, val)
     }
     | nested '(' params ')'
     {
@@ -106,7 +106,7 @@ nested:
             panic(err)
         }
         name := callName($1.name)
-        $$ = NewValue(name, val)
+        $$ = yylex.(*lexer).newValue(name, val)
     }
 
 params:
@@ -128,7 +128,7 @@ rel:
         $$ = $2.Not()
 }
 | '-' rel %prec UMINUS {
-        $$ = NewValue("", float64(0)).Sub($2)
+        $$ = yylex.(*lexer).newValue("", 0).Sub($2)
 }
 | rel EQ rel {
 	$$ = $1.Eq($3)

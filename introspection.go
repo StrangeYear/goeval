@@ -52,7 +52,7 @@ func (c *CompiledExpression) ExplainMap(args map[string]any) (steps []TraceStep,
 			err = fmt.Errorf("%v", r)
 		}
 	}()
-	ctx := &evalContext{kv: args, fns: c.fns}
+	ctx := &evalContext{kv: args, fns: c.fns, useDecimal: c.useDecimal}
 	trace := explainTrace{}
 	trace.eval(ctx, c.root)
 	return trace.steps, nil
@@ -109,7 +109,7 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 		for i, item := range n.items {
 			vals[i] = t.eval(ctx, item).val
 		}
-		return t.add(nodeExpr(node), NewValue("", vals))
+		return t.add(nodeExpr(node), ctx.newValue("", vals))
 	case functionNode:
 		fn := ctx.fns[n.name]
 		if fn == nil {
@@ -119,9 +119,9 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 		if err != nil {
 			panic(err)
 		}
-		return t.add(nodeExpr(node), NewValue("", res))
+		return t.add(nodeExpr(node), ctx.newValue("", res))
 	case variableNode:
-		return t.add(nodeExpr(node), NewValue(n.name, ctx.kv[n.name]))
+		return t.add(nodeExpr(node), ctx.newValue(n.name, ctx.kv[n.name]))
 	case pathNode:
 		val := any(ctx.kv[n.root])
 		for _, step := range n.steps {
@@ -131,11 +131,11 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 				val = SelectValue(val, step.key)
 			}
 		}
-		return t.add(nodeExpr(node), NewValue(n.name, val))
+		return t.add(nodeExpr(node), ctx.newValue(n.name, val))
 	case selectNameNode:
 		base := t.eval(ctx, n.base)
 		name := base.name + "." + n.key
-		return t.add(nodeExpr(node), NewValue(name, SelectValue(base.val, n.key)))
+		return t.add(nodeExpr(node), ctx.newValue(name, SelectValue(base.val, n.key)))
 	case selectIndexNode:
 		base := t.eval(ctx, n.base)
 		key := n.staticKey
@@ -145,18 +145,18 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 			key = keyValue.String()
 		}
 		name := indexName(base.name, keyValue)
-		return t.add(nodeExpr(node), NewValue(name, SelectValue(base.val, key)))
+		return t.add(nodeExpr(node), ctx.newValue(name, SelectValue(base.val, key)))
 	case callNode:
 		base := t.eval(ctx, n.base)
 		val, err := toFunc(base.val)(t.evalArgs(ctx, n.args)...)
 		if err != nil {
 			panic(err)
 		}
-		return t.add(nodeExpr(node), NewValue(callName(base.name), val))
+		return t.add(nodeExpr(node), ctx.newValue(callName(base.name), val))
 	case jsonPathNode:
-		return t.add(nodeExpr(node), evalJSONPath(ctx.kv, n.path))
+		return t.add(nodeExpr(node), evalJSONPath(ctx, n.path))
 	case unaryNode:
-		return t.add(nodeExpr(node), evalUnaryValue(n.op, t.eval(ctx, n.x)))
+		return t.add(nodeExpr(node), evalUnaryValue(n.op, t.eval(ctx, n.x), ctx.useDecimal))
 	case binaryNode:
 		return t.evalBinary(ctx, n)
 	case regexNode:

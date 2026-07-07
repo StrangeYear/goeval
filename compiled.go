@@ -11,26 +11,34 @@ import (
 )
 
 type CompiledExpression struct {
-	root exprNode
-	fns  map[string]Func
+	root       exprNode
+	fns        map[string]Func
+	useDecimal bool
 }
 
 type evalContext struct {
-	kv  map[string]any
-	fns map[string]Func
+	kv         map[string]any
+	fns        map[string]Func
+	useDecimal bool
 }
 
 type foldContext struct {
 	fns         map[string]Func
 	foldableFns map[string]struct{}
+	useDecimal  bool
 }
 
 type exprNode interface {
 	Eval(*evalContext) Value
 }
 
+func (ctx *evalContext) newValue(name string, val any) Value {
+	return newValue(name, val, ctx.useDecimal)
+}
+
 func (e *Evaluable) Compile(expr string) (compiled *CompiledExpression, err error) {
-	if compiled, ok := e.cache.get(expr); ok {
+	cacheKey := compileCacheKey(expr, e.useDecimal)
+	if compiled, ok := e.cache.get(cacheKey); ok {
 		return compiled, nil
 	}
 	defer func() {
@@ -39,7 +47,7 @@ func (e *Evaluable) Compile(expr string) (compiled *CompiledExpression, err erro
 			err = fmt.Errorf("%v", r)
 		}
 	}()
-	lex := newLexer(expr, nil, e.fns, false)
+	lex := newLexer(expr, nil, e.fns, false, e.useDecimal)
 	defer lex.release()
 	compileLex := &compileLexerAdapter{lexer: lex}
 	compileParseWithPool(compileLex)
@@ -50,10 +58,12 @@ func (e *Evaluable) Compile(expr string) (compiled *CompiledExpression, err erro
 		root: foldNode(compileLex.answer, foldContext{
 			fns:         e.fns,
 			foldableFns: e.foldableFns,
+			useDecimal:  e.useDecimal,
 		}),
-		fns: e.fns,
+		fns:        e.fns,
+		useDecimal: e.useDecimal,
 	}
-	e.cache.set(expr, compiled)
+	e.cache.set(cacheKey, compiled)
 	return compiled, nil
 }
 
@@ -120,7 +130,7 @@ func (n arrayNode) Eval(ctx *evalContext) Value {
 	for i, item := range n.items {
 		vals[i] = item.Eval(ctx).val
 	}
-	return NewValue("", vals)
+	return ctx.newValue("", vals)
 }
 
 type functionNode struct {
@@ -137,7 +147,7 @@ func (n functionNode) Eval(ctx *evalContext) Value {
 	if err != nil {
 		panic(err)
 	}
-	return NewValue("", res)
+	return ctx.newValue("", res)
 }
 
 type variableNode struct {
@@ -145,7 +155,7 @@ type variableNode struct {
 }
 
 func (n variableNode) Eval(ctx *evalContext) Value {
-	return NewValue(n.name, ctx.kv[n.name])
+	return ctx.newValue(n.name, ctx.kv[n.name])
 }
 
 type pathStep struct {
@@ -170,7 +180,7 @@ func (n pathNode) Eval(ctx *evalContext) Value {
 			val = SelectValue(val, step.key)
 		}
 	}
-	return NewValue(n.name, val)
+	return ctx.newValue(n.name, val)
 }
 
 type selectNameNode struct {
@@ -181,7 +191,7 @@ type selectNameNode struct {
 func (n selectNameNode) Eval(ctx *evalContext) Value {
 	base := n.base.Eval(ctx)
 	name := base.name + "." + n.key
-	return NewValue(name, SelectValue(base.val, n.key))
+	return ctx.newValue(name, SelectValue(base.val, n.key))
 }
 
 type selectIndexNode struct {
@@ -200,7 +210,7 @@ func (n selectIndexNode) Eval(ctx *evalContext) Value {
 		key = keyValue.String()
 	}
 	name := indexName(base.name, keyValue)
-	return NewValue(name, SelectValue(base.val, key))
+	return ctx.newValue(name, SelectValue(base.val, key))
 }
 
 type callNode struct {
@@ -214,7 +224,7 @@ func (n callNode) Eval(ctx *evalContext) Value {
 	if err != nil {
 		panic(err)
 	}
-	return NewValue(callName(base.name), val)
+	return ctx.newValue(callName(base.name), val)
 }
 
 type jsonPathNode struct {
@@ -222,7 +232,7 @@ type jsonPathNode struct {
 }
 
 func (n jsonPathNode) Eval(ctx *evalContext) Value {
-	return evalJSONPath(ctx.kv, n.path)
+	return evalJSONPath(ctx, n.path)
 }
 
 type unaryNode struct {
@@ -231,7 +241,7 @@ type unaryNode struct {
 }
 
 func (n unaryNode) Eval(ctx *evalContext) Value {
-	return evalUnaryValue(n.op, n.x.Eval(ctx))
+	return evalUnaryValue(n.op, n.x.Eval(ctx), ctx.useDecimal)
 }
 
 type binaryOp uint8
@@ -313,12 +323,12 @@ func (n binaryNode) Eval(ctx *evalContext) Value {
 	return evalBinaryValue(n.op, left, n.right.Eval(ctx))
 }
 
-func evalUnaryValue(op string, x Value) Value {
+func evalUnaryValue(op string, x Value, useDecimal bool) Value {
 	switch op {
 	case "!":
 		return x.Not()
 	case "-":
-		return NewValue("", float64(0)).Sub(x)
+		return newValue("", 0, useDecimal).Sub(x)
 	default:
 		panic(fmt.Errorf("unsupported unary operator %s", op))
 	}
@@ -423,7 +433,7 @@ func (c *CompiledExpression) Eval(args ...any) (val Value, err error) {
 	if err != nil {
 		return nilValue, err
 	}
-	return c.root.Eval(&evalContext{kv: pArgs, fns: c.fns}), nil
+	return c.root.Eval(&evalContext{kv: pArgs, fns: c.fns, useDecimal: c.useDecimal}), nil
 }
 
 func (c *CompiledExpression) EvalMap(args map[string]any) (val Value, err error) {
@@ -457,7 +467,7 @@ func (c *CompiledExpression) EvalInt(args ...any) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Int(), nil
+	return safeValueInt(val)
 }
 
 func (c *CompiledExpression) EvalMapInt(args map[string]any) (int, error) {
@@ -465,7 +475,7 @@ func (c *CompiledExpression) EvalMapInt(args map[string]any) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Int(), nil
+	return safeValueInt(val)
 }
 
 func (c *CompiledExpression) EvalFloat(args ...any) (float64, error) {
@@ -473,7 +483,7 @@ func (c *CompiledExpression) EvalFloat(args ...any) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return val.Float(), nil
+	return safeValueFloat(val)
 }
 
 func (c *CompiledExpression) EvalMapFloat(args map[string]any) (float64, error) {
@@ -481,7 +491,7 @@ func (c *CompiledExpression) EvalMapFloat(args map[string]any) (float64, error) 
 	if err != nil {
 		return 0, err
 	}
-	return val.Float(), nil
+	return safeValueFloat(val)
 }
 
 func (c *CompiledExpression) EvalString(args ...any) (string, error) {
@@ -501,7 +511,7 @@ func (c *CompiledExpression) EvalMapString(args map[string]any) (string, error) 
 }
 
 func (c *CompiledExpression) evalMapFast(args map[string]any) Value {
-	return c.root.Eval(&evalContext{kv: args, fns: c.fns})
+	return c.root.Eval(&evalContext{kv: args, fns: c.fns, useDecimal: c.useDecimal})
 }
 
 func foldNode(node exprNode, ctx foldContext) exprNode {
@@ -513,7 +523,7 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 	case arrayNode:
 		items := foldNodes(n.items, ctx)
 		if allLiterals(items) {
-			return foldConstant(arrayNode{items: items}, ctx.fns)
+			return foldConstant(arrayNode{items: items}, ctx)
 		}
 		n.items = items
 		return n
@@ -523,7 +533,7 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 		}
 		n.args = foldNodes(n.args, ctx)
 		if isFoldableFunction(n.name, ctx) && allLiterals(n.args) {
-			return foldConstant(n, ctx.fns)
+			return foldConstant(n, ctx)
 		}
 		return n
 	case selectNameNode:
@@ -532,7 +542,7 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 			return path
 		}
 		if _, ok := n.base.(literalNode); ok {
-			return foldConstant(n, ctx.fns)
+			return foldConstant(n, ctx)
 		}
 		return n
 	case selectIndexNode:
@@ -548,20 +558,20 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 			}
 		}
 		if _, ok := n.base.(literalNode); ok && n.hasStaticKey {
-			return foldConstant(n, ctx.fns)
+			return foldConstant(n, ctx)
 		}
 		return n
 	case callNode:
 		n.base = foldNode(n.base, ctx)
 		n.args = foldNodes(n.args, ctx)
 		if _, ok := n.base.(literalNode); ok && allLiterals(n.args) {
-			return foldConstant(n, ctx.fns)
+			return foldConstant(n, ctx)
 		}
 		return n
 	case unaryNode:
 		n.x = foldNode(n.x, ctx)
 		if _, ok := n.x.(literalNode); ok {
-			return foldConstant(n, ctx.fns)
+			return foldConstant(n, ctx)
 		}
 		return n
 	case binaryNode:
@@ -569,7 +579,7 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 		n.right = foldNode(n.right, ctx)
 		if _, ok := n.left.(literalNode); ok {
 			if _, ok := n.right.(literalNode); ok {
-				return foldConstant(n, ctx.fns)
+				return foldConstant(n, ctx)
 			}
 		}
 		if regex, ok := foldRegexNode(n); ok {
@@ -583,7 +593,7 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 		if _, ok := n.cond.(literalNode); ok {
 			if _, ok := n.truthy.(literalNode); ok {
 				if _, ok := n.falsy.(literalNode); ok {
-					return foldConstant(n, ctx.fns)
+					return foldConstant(n, ctx)
 				}
 			}
 		}
@@ -633,8 +643,8 @@ func allLiterals(nodes []exprNode) bool {
 	return true
 }
 
-func foldConstant(node exprNode, fns map[string]Func) exprNode {
-	return literalNode{value: node.Eval(&evalContext{fns: fns})}
+func foldConstant(node exprNode, ctx foldContext) exprNode {
+	return literalNode{value: node.Eval(&evalContext{fns: ctx.fns, useDecimal: ctx.useDecimal})}
 }
 
 func isFoldableFunction(name string, ctx foldContext) bool {
@@ -805,13 +815,13 @@ func selectIndexExpr(base exprNode, key exprNode) exprNode {
 	return node
 }
 
-func evalJSONPath(kv map[string]any, path string) Value {
-	if val, ok := SelectPath(kv, path); ok {
-		return NewValue(path, val)
+func evalJSONPath(ctx *evalContext, path string) Value {
+	if val, ok := SelectPath(ctx.kv, path); ok {
+		return ctx.newValue(path, val)
 	}
-	bs, err := json.Marshal(kv)
+	bs, err := json.Marshal(ctx.kv)
 	if err != nil {
 		panic(fmt.Errorf("parameter json marshal failed, %s", err))
 	}
-	return NewValue(path, gjson.ParseBytes(bs).Get(path))
+	return ctx.newValue(path, gjson.ParseBytes(bs).Get(path))
 }

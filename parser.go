@@ -526,7 +526,7 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line parser.y:36
 		{
-			yyVAL.val = NewValue("", yyDollar[2].vals)
+			yyVAL.val = yylex.(*lexer).newValue("", yyDollar[2].vals)
 		}
 	case 4:
 		yyDollar = yyS[yypt-4 : yypt+1]
@@ -540,7 +540,7 @@ yydefault:
 			if err != nil {
 				panic(err)
 			}
-			yyVAL.val = NewValue("", res)
+			yyVAL.val = yylex.(*lexer).newValue("", res)
 		}
 	case 7:
 		yyDollar = yyS[yypt-3 : yypt+1]
@@ -554,7 +554,7 @@ yydefault:
 		{
 			val := SelectValue(yyDollar[1].val.val, yyDollar[2].name)
 			name := yyDollar[1].val.name + "." + yyDollar[2].name
-			yyVAL.val = NewValue(name, val)
+			yyVAL.val = yylex.(*lexer).newValue(name, val)
 		}
 	case 9:
 		yyDollar = yyS[yypt-4 : yypt+1]
@@ -562,7 +562,7 @@ yydefault:
 		{
 			val := SelectValue(yyDollar[1].val.val, yyDollar[3].val.String())
 			name := indexName(yyDollar[1].val.name, yyDollar[3].val)
-			yyVAL.val = NewValue(name, val)
+			yyVAL.val = yylex.(*lexer).newValue(name, val)
 		}
 	case 10:
 		yyDollar = yyS[yypt-4 : yypt+1]
@@ -574,14 +574,14 @@ yydefault:
 				panic(err)
 			}
 			name := callName(yyDollar[1].val.name)
-			yyVAL.val = NewValue(name, val)
+			yyVAL.val = yylex.(*lexer).newValue(name, val)
 		}
 	case 11:
 		yyDollar = yyS[yypt-1 : yypt+1]
 //line parser.y:85
 		{
 			val := yylex.(*lexer).kv[yyDollar[1].name]
-			yyVAL.val = NewValue(yyDollar[1].name, val)
+			yyVAL.val = yylex.(*lexer).newValue(yyDollar[1].name, val)
 		}
 	case 12:
 		yyDollar = yyS[yypt-2 : yypt+1]
@@ -589,7 +589,7 @@ yydefault:
 		{
 			val := SelectValue(yyDollar[1].val.val, yyDollar[2].name)
 			name := yyDollar[1].val.name + "." + yyDollar[2].name
-			yyVAL.val = NewValue(name, val)
+			yyVAL.val = yylex.(*lexer).newValue(name, val)
 		}
 	case 13:
 		yyDollar = yyS[yypt-4 : yypt+1]
@@ -597,7 +597,7 @@ yydefault:
 		{
 			val := SelectValue(yyDollar[1].val.val, yyDollar[3].val.String())
 			name := indexName(yyDollar[1].val.name, yyDollar[3].val)
-			yyVAL.val = NewValue(name, val)
+			yyVAL.val = yylex.(*lexer).newValue(name, val)
 		}
 	case 14:
 		yyDollar = yyS[yypt-4 : yypt+1]
@@ -609,7 +609,7 @@ yydefault:
 				panic(err)
 			}
 			name := callName(yyDollar[1].val.name)
-			yyVAL.val = NewValue(name, val)
+			yyVAL.val = yylex.(*lexer).newValue(name, val)
 		}
 	case 15:
 		yyDollar = yyS[yypt-0 : yypt+1]
@@ -639,7 +639,7 @@ yydefault:
 		yyDollar = yyS[yypt-2 : yypt+1]
 //line parser.y:130
 		{
-			yyVAL.val = NewValue("", float64(0)).Sub(yyDollar[2].val)
+			yyVAL.val = yylex.(*lexer).newValue("", 0).Sub(yyDollar[2].val)
 		}
 	case 21:
 		yyDollar = yyS[yypt-3 : yypt+1]

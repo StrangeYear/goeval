@@ -21,10 +21,22 @@ GoEval can evaluate expressions with parameters, arimethetic, logical, and strin
 - variable dependency extraction: `vars, err := goeval.Variables("foo.bar > min")`
 - structured dependency extraction: `deps, err := goeval.Dependencies("foo[bar] > 0")`
 - evaluation trace: `steps, err := goeval.Explain("foo > 0", params)`
+- decimal arithmetic: `goeval.Full(goeval.WithDecimal(true)).EvalBool("0.1 + 0.2 == 0.3")`
 
 It can easily be extended with custom functions or operators:
 
 custom comparator: max(1,2,3) > 1
+
+### Decimal arithmetic
+
+By default numbers use the existing `float64` behavior. Enable decimal mode when arithmetic expressions need exact decimal addition, subtraction, multiplication, and division:
+
+```go
+ok, err := goeval.Full(goeval.WithDecimal(true)).EvalBool(`0.1 + 0.2 == 0.3`)
+// ok == true
+```
+
+Compiled expressions also use decimal arithmetic during constant folding when compiled from an evaluable configured with `WithDecimal(true)`.
 
 ### What operators and types does this support?
 - Modifiers: + - / * %
@@ -43,7 +55,7 @@ custom comparator: max(1,2,3) > 1
 - Strings: `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `replace`, `strlen`
 - Collections: `len`
 - Numbers: `min`, `max`, `abs`, `round`
-- Conversion: `int`, `float`, `string`, `bool`
+- Conversion: `int`, `float`, `decimal`, `string`, `bool`
 - Presence checks: `exists`, `empty`, `notEmpty`, `coalesce`, `default`
 - Matching and booleans: `matches`, `regex`, `any`, `all`
 - Time: `now`, `date`, `duration`

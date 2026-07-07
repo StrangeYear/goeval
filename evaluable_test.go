@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func assertEvalAndCompile(t *testing.T, e *Evaluable, expr string, want any, args ...any) {
@@ -299,6 +301,135 @@ func TestCompileInvalidRegexLiteral(t *testing.T) {
 	}
 }
 
+func TestDecimalEvaluationAndCompile(t *testing.T) {
+	e := Full(WithDecimal(true))
+	tests := []struct {
+		name string
+		expr string
+		args []any
+		want bool
+	}{
+		{name: "addition", expr: `0.1 + 0.2 == 0.3`, want: true},
+		{name: "subtraction", expr: `0.3 - 0.2 == 0.1`, want: true},
+		{name: "multiplication", expr: `0.7 * 0.1 == 0.07`, want: true},
+		{name: "division", expr: `1.00 / 4 == 0.25`, want: true},
+		{name: "comparison", expr: `0.1 + 0.2 > 0.3`, want: false},
+		{
+			name: "params",
+			expr: `a + b == 0.3`,
+			args: []any{map[string]any{"a": 0.1, "b": 0.2}},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := e.EvalBool(tt.expr, tt.args...)
+			if err != nil {
+				t.Fatalf("EvalBool() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("EvalBool() = %v, want %v", got, tt.want)
+			}
+
+			compiled, err := e.Compile(tt.expr)
+			if err != nil {
+				t.Fatalf("Compile() error = %v", err)
+			}
+			got, err = compiled.EvalBool(tt.args...)
+			if err != nil {
+				t.Fatalf("Compiled EvalBool() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("Compiled EvalBool() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecimalValueAndBuiltins(t *testing.T) {
+	e := Full(WithDecimal(true))
+	val, _, err := e.Eval(`0.1 + 0.2`)
+	if err != nil {
+		t.Fatalf("Eval() error = %v", err)
+	}
+	got, ok := val.val.(decimal.Decimal)
+	if !ok {
+		t.Fatalf("Eval() value type = %T, want decimal.Decimal", val.val)
+	}
+	if got.String() != "0.3" {
+		t.Fatalf("Eval() value = %s, want 0.3", got)
+	}
+
+	assertEvalAndCompile(t, e, `date(1651467728) > date("2022-05-01 23:59:59")`, true)
+	assertEvalAndCompile(t, e, `duration(24, "ns") == 24`, true)
+	assertEvalAndCompile(t, e, `float("0.1") + 0.2 == 0.3`, true)
+
+	defaultEval := Full()
+	val, _, err = defaultEval.Eval(`decimal("0.1")`)
+	if err != nil {
+		t.Fatalf("Eval(decimal()) error = %v", err)
+	}
+	got, ok = val.val.(decimal.Decimal)
+	if !ok {
+		t.Fatalf("decimal() value type = %T, want decimal.Decimal", val.val)
+	}
+	if got.String() != "0.1" {
+		t.Fatalf("decimal() value = %s, want 0.1", got)
+	}
+	assertEvalAndCompile(t, defaultEval, `decimal("0.1") + decimal("0.2") == decimal("0.3")`, true)
+	assertEvalAndCompile(t, defaultEval, `decimal(0.1) + 0.2 == decimal("0.3")`, true)
+}
+
+func TestDecimalContrastsFloatPrecision(t *testing.T) {
+	tests := []struct {
+		name        string
+		expr        string
+		wantFloat   bool
+		wantDecimal bool
+	}{
+		{
+			name:        "decimal fraction is not exact in binary float",
+			expr:        `0.1 + 0.2 == 0.3`,
+			wantFloat:   false,
+			wantDecimal: true,
+		},
+		{
+			name:        "binary exact fractions stay exact in float",
+			expr:        `0.5 + 0.25 == 0.75`,
+			wantFloat:   true,
+			wantDecimal: true,
+		},
+		{
+			name:        "division can also be exactly representable",
+			expr:        `1.00 / 4 == 0.25`,
+			wantFloat:   true,
+			wantDecimal: true,
+		},
+	}
+
+	floatEval := Full()
+	decimalEval := Full(WithDecimal(true))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFloat, err := floatEval.EvalBool(tt.expr)
+			if err != nil {
+				t.Fatalf("float EvalBool() error = %v", err)
+			}
+			if gotFloat != tt.wantFloat {
+				t.Fatalf("float EvalBool() = %v, want %v", gotFloat, tt.wantFloat)
+			}
+
+			gotDecimal, err := decimalEval.EvalBool(tt.expr)
+			if err != nil {
+				t.Fatalf("decimal EvalBool() error = %v", err)
+			}
+			if gotDecimal != tt.wantDecimal {
+				t.Fatalf("decimal EvalBool() = %v, want %v", gotDecimal, tt.wantDecimal)
+			}
+		})
+	}
+}
+
 func TestCompileCache(t *testing.T) {
 	e := NewEvaluable()
 	first, err := e.Compile(`a > 1`)
@@ -325,6 +456,88 @@ func TestCompileCache(t *testing.T) {
 	if first == second {
 		t.Fatal("Compile() returned cached pointer with cache disabled")
 	}
+}
+
+func TestCompileCacheSeparatesDecimalMode(t *testing.T) {
+	e := NewEvaluable()
+	expr := `0.1 + 0.2 == 0.3`
+	floatCompiled, err := e.Compile(expr)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	got, err := floatCompiled.EvalBool()
+	if err != nil {
+		t.Fatalf("Compiled EvalBool() error = %v", err)
+	}
+	if got {
+		t.Fatal("float compiled expression = true, want false")
+	}
+
+	e.useDecimal = true
+	decimalCompiled, err := e.Compile(expr)
+	if err != nil {
+		t.Fatalf("decimal Compile() error = %v", err)
+	}
+	if decimalCompiled == floatCompiled {
+		t.Fatal("decimal Compile() reused float cache entry")
+	}
+	got, err = decimalCompiled.EvalBool()
+	if err != nil {
+		t.Fatalf("decimal Compiled EvalBool() error = %v", err)
+	}
+	if !got {
+		t.Fatal("decimal compiled expression = false, want true")
+	}
+}
+
+func TestDefaultFloatEvaluationUnchanged(t *testing.T) {
+	got, err := Full().EvalBool(`0.1 + 0.2 == 0.3`)
+	if err != nil {
+		t.Fatalf("EvalBool() error = %v", err)
+	}
+	if got {
+		t.Fatal("EvalBool() = true, want existing float64 behavior false")
+	}
+}
+
+func TestInvalidOperationsReturnErrors(t *testing.T) {
+	assertReturnsErrorWithoutPanic := func(name string, fn func() error) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			t.Helper()
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+			if err := fn(); err == nil {
+				t.Fatal("error = nil, want error")
+			}
+		})
+	}
+
+	assertReturnsErrorWithoutPanic("eval invalid multiply", func() error {
+		_, _, err := Full().Eval(`"a" * "b"`)
+		return err
+	})
+	assertReturnsErrorWithoutPanic("eval float invalid conversion", func() error {
+		_, err := Full().EvalFloat(`"abc"`)
+		return err
+	})
+	assertReturnsErrorWithoutPanic("eval int invalid conversion", func() error {
+		_, err := Full().EvalInt(`"abc"`)
+		return err
+	})
+
+	compiled := MustCompile(`"abc"`)
+	assertReturnsErrorWithoutPanic("compiled eval float invalid conversion", func() error {
+		_, err := compiled.EvalFloat()
+		return err
+	})
+	assertReturnsErrorWithoutPanic("compiled eval map int invalid conversion", func() error {
+		_, err := compiled.EvalMapInt(nil)
+		return err
+	})
 }
 
 func TestValidateAndMustCompile(t *testing.T) {

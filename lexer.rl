@@ -3,7 +3,6 @@ package goeval
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"sync"
     "strings"
 
@@ -28,6 +27,7 @@ type lexer struct {
     tokens []string
     collectTokens bool
     fns map[string]Func
+    useDecimal bool
     jsonParsed bool
     json gjson.Result
 }
@@ -67,7 +67,7 @@ func (lex *lexer) errorAt(pos int, format string, args ...any) error {
 	return fmt.Errorf("%s at line %d, column %d", fmt.Sprintf(format, args...), line, column)
 }
 
-func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens bool) *lexer {
+func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens bool, useDecimal bool) *lexer {
 	lex := lexerPool.Get().(*lexer)
 	*lex = lexer{
 			data: data,
@@ -75,9 +75,14 @@ func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens
 			kv: kv,
 			fns: fns,
 			collectTokens: collectTokens,
+			useDecimal: useDecimal,
 	}
 	%% write init;
 	return lex
+}
+
+func (lex *lexer) newValue(name string, val any) Value {
+	return newValue(name, val, lex.useDecimal)
 }
 
 func (lex *lexer) release() {
@@ -94,7 +99,7 @@ type lexeme struct {
 
 func (lex *lexer) jsonPathValue(path string) Value {
 	if val, ok := SelectPath(lex.kv, path); ok {
-		return NewValue(path, val)
+		return lex.newValue(path, val)
 	}
 	if !lex.jsonParsed {
 		bs, err := json.Marshal(lex.kv)
@@ -104,7 +109,7 @@ func (lex *lexer) jsonPathValue(path string) Value {
 		lex.json = gjson.ParseBytes(bs)
 		lex.jsonParsed = true
 	}
-	return NewValue(path, lex.json.Get(path))
+	return lex.newValue(path, lex.json.Get(path))
 }
 
 func (lex *lexer) next() (int, lexeme) {
@@ -115,7 +120,7 @@ func (lex *lexer) next() (int, lexeme) {
 	%%{
 		action Bool {
 			tok = VALUE
-			item.val = NewValue("", lex.token() == "true")
+			item.val = lex.newValue("", lex.token() == "true")
 			fbreak;
 		}
 		action JsonPath {
@@ -146,11 +151,7 @@ func (lex *lexer) next() (int, lexeme) {
         }
 		action Float {
 			tok = VALUE
-			n, err := strconv.ParseFloat(lex.token(), 64)
-			if err != nil {
-				panic(err)
-			}
-			item.val = NewValue("", n)
+			item.val = newNumberLiteral("", lex.token(), lex.useDecimal)
 			fbreak;
 		}
 		action String {
@@ -166,7 +167,7 @@ func (lex *lexer) next() (int, lexeme) {
 					val = strings.ReplaceAll(val, "\\`", "`")
 				}
 			}
-			item.val = NewValue("", val[1:len(val)-1])
+			item.val = lex.newValue("", val[1:len(val)-1])
 			fbreak;
 		}
 

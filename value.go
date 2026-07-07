@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/tidwall/gjson"
 )
 
@@ -77,6 +78,14 @@ func convertNumberToFloat(num any) float64 {
 }
 
 func NewValue(name string, v any) Value {
+	return newValue(name, v, false)
+}
+
+func NewDecimalValue(name string, v any) Value {
+	return newValue(name, v, true)
+}
+
+func newValue(name string, v any, useDecimal bool) Value {
 	res := Value{
 		name:  name,
 		val:   v,
@@ -88,6 +97,8 @@ func NewValue(name string, v any) Value {
 	switch r := v.(type) {
 	case bool:
 		res.vType = Boolean
+	case decimal.Decimal:
+		res.vType = Number
 	case []byte:
 		res.val = string(r)
 		res.vType = String
@@ -95,7 +106,11 @@ func NewValue(name string, v any) Value {
 		res.vType = String
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		res.vType = Number
-		res.val = convertNumberToFloat(v)
+		if useDecimal {
+			res.val = convertNumberToDecimal(v)
+		} else {
+			res.val = convertNumberToFloat(v)
+		}
 	case []any:
 		res.vType = Array
 	case gjson.Result:
@@ -119,7 +134,7 @@ func NewValue(name string, v any) Value {
 			case reflect.Array, reflect.Slice:
 				res.vType = Array
 			default:
-				return NewValue(name, elem.Interface())
+				return newValue(name, elem.Interface(), useDecimal)
 			}
 			return res
 		}
@@ -138,6 +153,53 @@ func NewValue(name string, v any) Value {
 	return res
 }
 
+func convertNumberToDecimal(num any) decimal.Decimal {
+	switch n := num.(type) {
+	case decimal.Decimal:
+		return n
+	case float64:
+		return decimal.NewFromFloat(n)
+	case float32:
+		return decimal.NewFromFloat32(n)
+	case int:
+		return decimal.NewFromInt(int64(n))
+	case int8:
+		return decimal.NewFromInt(int64(n))
+	case int16:
+		return decimal.NewFromInt(int64(n))
+	case int32:
+		return decimal.NewFromInt(int64(n))
+	case int64:
+		return decimal.NewFromInt(n)
+	case uint:
+		return decimal.NewFromUint64(uint64(n))
+	case uint8:
+		return decimal.NewFromUint64(uint64(n))
+	case uint16:
+		return decimal.NewFromUint64(uint64(n))
+	case uint32:
+		return decimal.NewFromUint64(uint64(n))
+	case uint64:
+		return decimal.NewFromUint64(n)
+	}
+	return decimal.Zero
+}
+
+func newNumberLiteral(name, token string, useDecimal bool) Value {
+	if useDecimal {
+		d, err := decimal.NewFromString(token)
+		if err != nil {
+			panic(err)
+		}
+		return NewDecimalValue(name, d)
+	}
+	f, err := strconv.ParseFloat(token, 64)
+	if err != nil {
+		panic(err)
+	}
+	return NewValue(name, f)
+}
+
 func (v Value) Float() float64 {
 	switch v.vType {
 	case Boolean:
@@ -146,7 +208,15 @@ func (v Value) Float() float64 {
 		}
 		return 0
 	case Number:
-		return v.val.(float64)
+		switch n := v.val.(type) {
+		case float64:
+			return n
+		case decimal.Decimal:
+			f, _ := n.Float64()
+			return f
+		default:
+			return convertNumberToFloat(n)
+		}
 	case String:
 		f, err := strconv.ParseFloat(v.String(), 64)
 		if err != nil {
@@ -166,8 +236,72 @@ func (v Value) Float() float64 {
 	}
 }
 
+func safeValueFloat(v Value) (val float64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			val = 0
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	return v.Float(), nil
+}
+
+func (v Value) Decimal() decimal.Decimal {
+	switch v.vType {
+	case Boolean:
+		if v.Boolean() {
+			return decimal.NewFromInt(1)
+		}
+		return decimal.Zero
+	case Number:
+		switch n := v.val.(type) {
+		case decimal.Decimal:
+			return n
+		default:
+			return convertNumberToDecimal(n)
+		}
+	case String:
+		d, err := decimal.NewFromString(v.String())
+		if err != nil {
+			panic(fmt.Errorf("convert value to decimal error: %s, name: %s", err, v.name))
+		}
+		return d
+	case Time:
+		return decimal.NewFromInt(v.val.(time.Time).Unix())
+	case Duration:
+		return decimal.NewFromInt(int64(v.val.(time.Duration)))
+	case Json:
+		r := v.val.(gjson.Result)
+		if r.Raw != "" {
+			d, err := decimal.NewFromString(r.Raw)
+			if err == nil {
+				return d
+			}
+		}
+		d, err := decimal.NewFromString(r.String())
+		if err != nil {
+			panic(fmt.Errorf("convert value to decimal error: %s, name: %s", err, v.name))
+		}
+		return d
+	case Nil:
+		return decimal.Zero
+	default:
+		panic(fmt.Errorf("invalid value type of variable '%s' for parse decimal", v.name))
+	}
+}
+
 func (v Value) Int() int {
 	return int(v.Float())
+}
+
+func safeValueInt(v Value) (val int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			val = 0
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	return v.Int(), nil
 }
 
 func (v Value) Array() []any {
@@ -296,6 +430,12 @@ func (v Value) Neq(v2 Value) Value {
 }
 
 func (v Value) Gt(v2 Value) Value {
+	if useDecimalMath(v, v2) {
+		return Value{
+			val:   v.Decimal().GreaterThan(v2.Decimal()),
+			vType: Boolean,
+		}
+	}
 	return Value{
 		val:   v.Float() > v2.Float(),
 		vType: Boolean,
@@ -303,6 +443,12 @@ func (v Value) Gt(v2 Value) Value {
 }
 
 func (v Value) Gte(v2 Value) Value {
+	if useDecimalMath(v, v2) {
+		return Value{
+			val:   v.Decimal().GreaterThanOrEqual(v2.Decimal()),
+			vType: Boolean,
+		}
+	}
 	return Value{
 		val:   v.Float() >= v2.Float(),
 		vType: Boolean,
@@ -310,6 +456,12 @@ func (v Value) Gte(v2 Value) Value {
 }
 
 func (v Value) Lt(v2 Value) Value {
+	if useDecimalMath(v, v2) {
+		return Value{
+			val:   v.Decimal().LessThan(v2.Decimal()),
+			vType: Boolean,
+		}
+	}
 	return Value{
 		val:   v.Float() < v2.Float(),
 		vType: Boolean,
@@ -317,6 +469,12 @@ func (v Value) Lt(v2 Value) Value {
 }
 
 func (v Value) Lte(v2 Value) Value {
+	if useDecimalMath(v, v2) {
+		return Value{
+			val:   v.Decimal().LessThanOrEqual(v2.Decimal()),
+			vType: Boolean,
+		}
+	}
 	return Value{
 		val:   v.Float() <= v2.Float(),
 		vType: Boolean,
@@ -353,6 +511,12 @@ func (v Value) Add(v2 Value) Value {
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
+		if useDecimalMath(v, v2) {
+			return Value{
+				val:   v.Decimal().Add(v2.Decimal()),
+				vType: Number,
+			}
+		}
 		f := v.val.(float64)
 		f2 := v2.val.(float64)
 		return Value{
@@ -407,6 +571,12 @@ func (v Value) Sub(v2 Value) Value {
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
+		if useDecimalMath(v, v2) {
+			return Value{
+				val:   v.Decimal().Sub(v2.Decimal()),
+				vType: Number,
+			}
+		}
 		f := v.val.(float64)
 		f2 := v2.val.(float64)
 		return Value{
@@ -467,6 +637,12 @@ func (v Value) Multi(v2 Value) Value {
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
+		if useDecimalMath(v, v2) {
+			return Value{
+				val:   v.Decimal().Mul(v2.Decimal()),
+				vType: Number,
+			}
+		}
 		f := v.val.(float64)
 		f2 := v2.val.(float64)
 		return Value{
@@ -491,6 +667,12 @@ func (v Value) Div(v2 Value) Value {
 			vType: Duration,
 		}
 	case v.vType == Number && v2.vType == Number:
+		if useDecimalMath(v, v2) {
+			return Value{
+				val:   v.Decimal().Div(v2.Decimal()),
+				vType: Number,
+			}
+		}
 		f := v.val.(float64)
 		f2 := v2.val.(float64)
 		return Value{
@@ -503,6 +685,12 @@ func (v Value) Div(v2 Value) Value {
 }
 
 func (v Value) Mod(v2 Value) Value {
+	if useDecimalMath(v, v2) {
+		return Value{
+			val:   v.Decimal().Mod(v2.Decimal()),
+			vType: Number,
+		}
+	}
 	return Value{
 		val:   float64(v.Int() % v2.Int()),
 		vType: Number,
@@ -525,13 +713,35 @@ func isCoalesceEmpty(v Value) bool {
 	case String:
 		return v.String() == ""
 	case Number:
-		return v.val.(float64) == 0
+		return isNumberZero(v)
 	case Array:
 		length, err := valueLen(v.val)
 		return err == nil && length == 0
 	default:
 		return false
 	}
+}
+
+func useDecimalMath(v, v2 Value) bool {
+	return isDecimalNumber(v) || isDecimalNumber(v2)
+}
+
+func isDecimalNumber(v Value) bool {
+	if v.vType != Number {
+		return false
+	}
+	_, ok := v.val.(decimal.Decimal)
+	return ok
+}
+
+func isNumberZero(v Value) bool {
+	if v.vType != Number {
+		return false
+	}
+	if d, ok := v.val.(decimal.Decimal); ok {
+		return d.IsZero()
+	}
+	return v.Float() == 0
 }
 
 func (v Value) In(v2 Value) Value {
