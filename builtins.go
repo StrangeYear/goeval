@@ -26,8 +26,8 @@ func defaultOptions() []Option {
 func builtinOptions() []Option {
 	return []Option{
 		withFoldableFunc("contains", builtinContains),
-		withFoldableFunc("startsWith", builtinStartsWith),
-		withFoldableFunc("endsWith", builtinEndsWith),
+		withFoldableFunc("startsWith", builtinStartsWith, "starts_with"),
+		withFoldableFunc("endsWith", builtinEndsWith, "ends_with"),
 		withFoldableFunc("lower", builtinLower),
 		withFoldableFunc("upper", builtinUpper),
 		withFoldableFunc("trim", builtinTrim),
@@ -42,13 +42,15 @@ func builtinOptions() []Option {
 		withFoldableFunc("bool", builtinBool),
 		withFoldableFunc("exists", builtinExists),
 		withFoldableFunc("empty", builtinEmpty),
-		withFoldableFunc("notEmpty", builtinNotEmpty),
+		withFoldableFunc("notEmpty", builtinNotEmpty, "not_empty"),
 		withFoldableFunc("coalesce", builtinCoalesce),
 		withFoldableFunc("default", builtinDefault),
 		withFoldableFunc("matches", builtinMatches),
 		withFoldableFunc("regex", builtinMatches),
 		withFoldableFunc("any", builtinAny),
 		withFoldableFunc("all", builtinAll),
+		withFoldableFunc("between", builtinBetween),
+		withFoldableFunc("withinLast", builtinWithinLast, "within_last"),
 	}
 }
 
@@ -444,6 +446,30 @@ func builtinAll(args ...any) (any, error) {
 		}
 	}
 	return true, nil
+}
+
+func builtinBetween(args ...any) (any, error) {
+	if err := expectArgCount("between", args, 3); err != nil {
+		return nil, err
+	}
+	value := NewValue("", args[0])
+	minVal := NewValue("", args[1])
+	maxVal := NewValue("", args[2])
+	return value.Gte(minVal).Boolean() && value.Lte(maxVal).Boolean(), nil
+}
+
+func builtinWithinLast(args ...any) (any, error) {
+	if err := expectArgCount("withinLast", args, 3); err != nil {
+		return nil, err
+	}
+	value := NewValue("", args[0])
+	window := NewValue("", args[1])
+	anchor := NewValue("", args[2])
+	if value.vType != Time || window.vType != Duration || anchor.vType != Time {
+		return nil, fmt.Errorf("withinLast() expects a time value, duration window, and time anchor")
+	}
+	lower := anchor.Sub(window)
+	return lower.Lte(value).Boolean() && value.Lte(anchor).Boolean(), nil
 }
 
 func valueLen(value any) (int, error) {

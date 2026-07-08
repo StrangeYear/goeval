@@ -11,15 +11,17 @@ import (
 )
 
 type CompiledExpression struct {
-	root       exprNode
-	fns        map[string]Func
-	useDecimal bool
+	root            exprNode
+	fns             map[string]Func
+	useDecimal      bool
+	strictVariables bool
 }
 
 type evalContext struct {
-	kv         map[string]any
-	fns        map[string]Func
-	useDecimal bool
+	kv              map[string]any
+	fns             map[string]Func
+	useDecimal      bool
+	strictVariables bool
 }
 
 type foldContext struct {
@@ -37,7 +39,7 @@ func (ctx *evalContext) newValue(name string, val any) Value {
 }
 
 func (e *Evaluable) Compile(expr string) (compiled *CompiledExpression, err error) {
-	cacheKey := compileCacheKey(expr, e.useDecimal)
+	cacheKey := compileCacheKey(expr, e.useDecimal, e.strictVariables)
 	if compiled, ok := e.cache.get(cacheKey); ok {
 		return compiled, nil
 	}
@@ -54,17 +56,41 @@ func (e *Evaluable) Compile(expr string) (compiled *CompiledExpression, err erro
 	if lex.err != nil {
 		return nil, lex.err
 	}
+	fns := cloneFuncs(e.fns)
 	compiled = &CompiledExpression{
 		root: foldNode(compileLex.answer, foldContext{
-			fns:         e.fns,
-			foldableFns: e.foldableFns,
+			fns:         fns,
+			foldableFns: cloneFoldableFuncs(e.foldableFns),
 			useDecimal:  e.useDecimal,
 		}),
-		fns:        e.fns,
-		useDecimal: e.useDecimal,
+		fns:             fns,
+		useDecimal:      e.useDecimal,
+		strictVariables: e.strictVariables,
 	}
 	e.cache.set(cacheKey, compiled)
 	return compiled, nil
+}
+
+func cloneFuncs(funcs map[string]Func) map[string]Func {
+	if len(funcs) == 0 {
+		return nil
+	}
+	clone := make(map[string]Func, len(funcs))
+	for name, fn := range funcs {
+		clone[name] = fn
+	}
+	return clone
+}
+
+func cloneFoldableFuncs(funcs map[string]struct{}) map[string]struct{} {
+	if len(funcs) == 0 {
+		return nil
+	}
+	clone := make(map[string]struct{}, len(funcs))
+	for name := range funcs {
+		clone[name] = struct{}{}
+	}
+	return clone
 }
 
 func Compile(expr string) (*CompiledExpression, error) {
@@ -141,7 +167,7 @@ type functionNode struct {
 func (n functionNode) Eval(ctx *evalContext) Value {
 	fn := ctx.fns[n.name]
 	if fn == nil {
-		panic(fmt.Errorf("unknown function %s", n.name))
+		panic(fmt.Errorf("undefined function %q", n.name))
 	}
 	res, err := evalNodeCall(ctx, fn, n.args)
 	if err != nil {
@@ -155,7 +181,11 @@ type variableNode struct {
 }
 
 func (n variableNode) Eval(ctx *evalContext) Value {
-	return ctx.newValue(n.name, ctx.kv[n.name])
+	val, ok := ctx.kv[n.name]
+	if ctx.strictVariables && !ok {
+		panic(fmt.Errorf("undefined variable %q", n.name))
+	}
+	return ctx.newValue(n.name, val)
 }
 
 type pathStep struct {
@@ -172,12 +202,17 @@ type pathNode struct {
 }
 
 func (n pathNode) Eval(ctx *evalContext) Value {
-	val := any(ctx.kv[n.root])
+	val, ok := ctx.kv[n.root]
+	if ctx.strictVariables && !ok {
+		panic(fmt.Errorf("undefined variable %q", n.root))
+	}
+	path := n.root
 	for _, step := range n.steps {
+		path += step.display
 		if step.isIndex {
-			val = selectStaticIndex(val, step.index, step.key)
+			val = selectStaticIndex(ctx, val, step.index, step.key, path)
 		} else {
-			val = SelectValue(val, step.key)
+			val = ctx.selectValue(val, step.key, path)
 		}
 	}
 	return ctx.newValue(n.name, val)
@@ -191,7 +226,7 @@ type selectNameNode struct {
 func (n selectNameNode) Eval(ctx *evalContext) Value {
 	base := n.base.Eval(ctx)
 	name := base.name + "." + n.key
-	return ctx.newValue(name, SelectValue(base.val, n.key))
+	return ctx.newValue(name, ctx.selectValue(base.val, n.key, name))
 }
 
 type selectIndexNode struct {
@@ -210,7 +245,7 @@ func (n selectIndexNode) Eval(ctx *evalContext) Value {
 		key = keyValue.String()
 	}
 	name := indexName(base.name, keyValue)
-	return ctx.newValue(name, SelectValue(base.val, key))
+	return ctx.newValue(name, ctx.selectValue(base.val, key, name))
 }
 
 type callNode struct {
@@ -255,6 +290,16 @@ const (
 	opNre
 	opNc
 	opIn
+	opNotIn
+	opContains
+	opNotContains
+	opStartsWith
+	opNotStartsWith
+	opEndsWith
+	opNotEndsWith
+	opBetween
+	opNotBetween
+	opWithinLast
 	opLt
 	opGt
 	opMatch
@@ -285,6 +330,26 @@ func (op binaryOp) String() string {
 		return "??"
 	case opIn:
 		return "in"
+	case opNotIn:
+		return "not in"
+	case opContains:
+		return "contains"
+	case opNotContains:
+		return "not contains"
+	case opStartsWith:
+		return "starts_with"
+	case opNotStartsWith:
+		return "not starts_with"
+	case opEndsWith:
+		return "ends_with"
+	case opNotEndsWith:
+		return "not ends_with"
+	case opBetween:
+		return "between"
+	case opNotBetween:
+		return "not between"
+	case opWithinLast:
+		return "within_last"
 	case opLt:
 		return "<"
 	case opGt:
@@ -370,6 +435,26 @@ func evalBinaryValue(op binaryOp, left, right Value) Value {
 		return left.Nre(right)
 	case opIn:
 		return left.In(right)
+	case opNotIn:
+		return left.In(right).Not()
+	case opContains:
+		return evalStringOperatorValue("contains", left, right)
+	case opNotContains:
+		return evalStringOperatorValue("contains", left, right).Not()
+	case opStartsWith:
+		return evalStringOperatorValue("starts_with", left, right)
+	case opNotStartsWith:
+		return evalStringOperatorValue("starts_with", left, right).Not()
+	case opEndsWith:
+		return evalStringOperatorValue("ends_with", left, right)
+	case opNotEndsWith:
+		return evalStringOperatorValue("ends_with", left, right).Not()
+	case opBetween:
+		return evalBetweenOperatorValue(left, right)
+	case opNotBetween:
+		return evalBetweenOperatorValue(left, right).Not()
+	case opWithinLast:
+		return evalWithinLastOperatorValue(left, right)
 	case opLt:
 		return left.Lt(right)
 	case opGt:
@@ -391,6 +476,53 @@ func evalBinaryValue(op binaryOp, left, right Value) Value {
 	default:
 		panic(fmt.Errorf("unsupported binary operator %s", op))
 	}
+}
+
+func evalStringOperatorValue(op string, left, right Value) Value {
+	var matched bool
+	switch op {
+	case "contains":
+		matched = strings.Contains(left.String(), right.String())
+	case "starts_with":
+		matched = strings.HasPrefix(left.String(), right.String())
+	case "ends_with":
+		matched = strings.HasSuffix(left.String(), right.String())
+	default:
+		panic(fmt.Errorf("unsupported string operator %s", op))
+	}
+	return Value{val: matched, vType: Boolean}
+}
+
+func evalBetweenOperatorValue(left, right Value) Value {
+	args := operatorArrayArgs("between", right, 2)
+	minVal := NewValue("", args[0])
+	maxVal := NewValue("", args[1])
+	return Value{
+		val:   left.Gte(minVal).Boolean() && left.Lte(maxVal).Boolean(),
+		vType: Boolean,
+	}
+}
+
+func evalWithinLastOperatorValue(left, right Value) Value {
+	args := operatorArrayArgs("within_last", right, 2)
+	window := NewValue("", args[0])
+	anchor := NewValue("", args[1])
+	if left.vType != Time || window.vType != Duration || anchor.vType != Time {
+		panic(fmt.Errorf("within_last operator expects a time value and [duration window, time anchor]"))
+	}
+	lower := anchor.Sub(window)
+	return Value{
+		val:   lower.Lte(left).Boolean() && left.Lte(anchor).Boolean(),
+		vType: Boolean,
+	}
+}
+
+func operatorArrayArgs(name string, right Value, count int) []any {
+	args := right.Array()
+	if len(args) != count {
+		panic(fmt.Errorf("%s operator expects an array with exactly %d item(s)", name, count))
+	}
+	return args
 }
 
 type regexNode struct {
@@ -433,7 +565,7 @@ func (c *CompiledExpression) Eval(args ...any) (val Value, err error) {
 	if err != nil {
 		return nilValue, err
 	}
-	return c.root.Eval(&evalContext{kv: pArgs, fns: c.fns, useDecimal: c.useDecimal}), nil
+	return c.root.Eval(c.newEvalContext(pArgs)), nil
 }
 
 func (c *CompiledExpression) EvalMap(args map[string]any) (val Value, err error) {
@@ -511,7 +643,16 @@ func (c *CompiledExpression) EvalMapString(args map[string]any) (string, error) 
 }
 
 func (c *CompiledExpression) evalMapFast(args map[string]any) Value {
-	return c.root.Eval(&evalContext{kv: args, fns: c.fns, useDecimal: c.useDecimal})
+	return c.root.Eval(c.newEvalContext(args))
+}
+
+func (c *CompiledExpression) newEvalContext(args map[string]any) *evalContext {
+	return &evalContext{
+		kv:              args,
+		fns:             c.fns,
+		useDecimal:      c.useDecimal,
+		strictVariables: c.strictVariables,
+	}
 }
 
 func foldNode(node exprNode, ctx foldContext) exprNode {
@@ -529,7 +670,7 @@ func foldNode(node exprNode, ctx foldContext) exprNode {
 		return n
 	case functionNode:
 		if ctx.fns[n.name] == nil {
-			panic(fmt.Errorf("unknown function %s", n.name))
+			panic(fmt.Errorf("undefined function %q", n.name))
 		}
 		n.args = foldNodes(n.args, ctx)
 		if isFoldableFunction(n.name, ctx) && allLiterals(n.args) {
@@ -679,36 +820,59 @@ func appendPathName(base exprNode, key, display string) (pathNode, bool) {
 	}
 }
 
-func selectStaticIndex(value any, index int, fallbackKey string) any {
+func selectStaticIndex(ctx *evalContext, value any, index int, fallbackKey, path string) any {
 	switch v := value.(type) {
 	case []any:
 		if index < len(v) {
 			return v[index]
+		}
+		if ctx.strictVariables {
+			panic(fmt.Errorf("undefined path %q", path))
 		}
 		return nil
 	case []int:
 		if index < len(v) {
 			return v[index]
 		}
+		if ctx.strictVariables {
+			panic(fmt.Errorf("undefined path %q", path))
+		}
 		return nil
 	case []float64:
 		if index < len(v) {
 			return v[index]
+		}
+		if ctx.strictVariables {
+			panic(fmt.Errorf("undefined path %q", path))
 		}
 		return nil
 	case []string:
 		if index < len(v) {
 			return v[index]
 		}
+		if ctx.strictVariables {
+			panic(fmt.Errorf("undefined path %q", path))
+		}
 		return nil
 	case []bool:
 		if index < len(v) {
 			return v[index]
 		}
+		if ctx.strictVariables {
+			panic(fmt.Errorf("undefined path %q", path))
+		}
 		return nil
 	default:
-		return SelectValue(value, fallbackKey)
+		return ctx.selectValue(value, fallbackKey, path)
 	}
+}
+
+func (ctx *evalContext) selectValue(value any, key, path string) any {
+	val, ok := SelectValueOK(value, key)
+	if ctx.strictVariables && !ok {
+		panic(fmt.Errorf("undefined path %q", path))
+	}
+	return val
 }
 
 func evalNodeArgs(ctx *evalContext, nodes []exprNode) []any {
@@ -823,5 +987,9 @@ func evalJSONPath(ctx *evalContext, path string) Value {
 	if err != nil {
 		panic(fmt.Errorf("parameter json marshal failed, %s", err))
 	}
-	return ctx.newValue(path, gjson.ParseBytes(bs).Get(path))
+	result := gjson.ParseBytes(bs).Get(path)
+	if ctx.strictVariables && !result.Exists() {
+		panic(fmt.Errorf("undefined path %q", path))
+	}
+	return ctx.newValue(path, result)
 }

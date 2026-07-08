@@ -134,6 +134,26 @@ func (lex *lexer) next() (int, lexeme) {
             item.name = lex.token()
             fbreak;
         }
+		action Keyword {
+            item.name = lex.token()
+            switch item.name {
+            case "contains":
+                tok = CONTAINS
+            case "starts_with":
+                tok = STARTS_WITH
+            case "ends_with":
+                tok = ENDS_WITH
+            case "between":
+                tok = BETWEEN
+            case "within_last":
+                tok = WITHIN_LAST
+            case "in":
+                tok = IN
+            case "not":
+                tok = NOT
+            }
+            fbreak;
+        }
         action Special {
             tok = IDENTIFIER
             item.name = lex.data[lex.ts+4:lex.te-2]
@@ -200,7 +220,7 @@ func (lex *lexer) next() (int, lexeme) {
 			"??" => { tok = NC; fbreak; };
 
 			# keywords
-			"in" => { tok = IN; fbreak; };
+			("contains" | "starts_with" | "ends_with" | "between" | "within_last" | "in" | "not") => Keyword;
 
 			identifier => Identifier;
 			sub_path => SubPath;
@@ -233,6 +253,8 @@ func (lex *lexer) Lex(out *yySymType) int {
 		}
 	case IDENTIFIER:
 		out.name = item.name
+	case CONTAINS, STARTS_WITH, ENDS_WITH, BETWEEN, WITHIN_LAST, IN, NOT:
+		out.name = item.name
 	}
 	return tok
 }
@@ -255,6 +277,27 @@ func (lex *compileLexerAdapter) Lex(out *compileSymType) int {
 	case IDENTIFIER:
 		out.name = item.name
 		return C_IDENTIFIER
+	case CONTAINS:
+		out.name = item.name
+		return C_CONTAINS
+	case STARTS_WITH:
+		out.name = item.name
+		return C_STARTS_WITH
+	case ENDS_WITH:
+		out.name = item.name
+		return C_ENDS_WITH
+	case BETWEEN:
+		out.name = item.name
+		return C_BETWEEN
+	case WITHIN_LAST:
+		out.name = item.name
+		return C_WITHIN_LAST
+	case NOT:
+		out.name = item.name
+		return C_NOT
+	case IN:
+		out.name = item.name
+		return C_IN
 	case EQ:
 		return C_EQ
 	case NEQ:
@@ -273,8 +316,6 @@ func (lex *compileLexerAdapter) Lex(out *compileSymType) int {
 		return C_OR
 	case NC:
 		return C_NC
-	case IN:
-		return C_IN
 	default:
 		return tok
 	}

@@ -160,6 +160,39 @@ func BenchmarkCompiledComplexExpression(b *testing.B) {
 	}
 }
 
+func BenchmarkCompileCacheHit(b *testing.B) {
+	e := Full(WithCompileCache(1024))
+	expressionString := "requests_made >= 100 && contains(name, 'AWS')"
+	if _, err := e.Compile(expressionString); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := e.Compile(expressionString); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkEvalMapBoolWithCompileCache(b *testing.B) {
+	e := Full(WithCompileCache(1024))
+	expressionString := "requests_made >= 100 && contains(name, 'AWS')"
+	params := map[string]any{
+		"requests_made": 100,
+		"name":          "AWS Marketplace",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		val, err := e.EvalMapBool(expressionString, params)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !val {
+			b.Fatal("Expected true, got", val)
+		}
+	}
+}
+
 func BenchmarkRegexExpression(b *testing.B) {
 	expressionString := "(foo !~ bar) && ('foobar' =~ oba)"
 	parameters := map[string]any{

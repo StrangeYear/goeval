@@ -67,8 +67,13 @@ func parsePathIndex(key string) (int, bool) {
 }
 
 func SelectValue(value any, key string) any {
+	val, _ := SelectValueOK(value, key)
+	return val
+}
+
+func SelectValueOK(value any, key string) (any, bool) {
 	if value == nil {
-		return nil
+		return nil, false
 	}
 
 	switch v := value.(type) {
@@ -97,50 +102,51 @@ func SelectValue(value any, key string) any {
 	vv := reflect.ValueOf(value)
 	vvElem := resolvePotentialPointer(vv)
 	if !vvElem.IsValid() {
-		return nil
+		return nil, false
 	}
 
 	switch vvElem.Kind() {
 	case reflect.Map:
 		mapKey, ok := reflectConvertTo(vvElem.Type().Key().Kind(), key)
 		if !ok {
-			return nil
+			return nil, false
 		}
 
 		vvElem = vvElem.MapIndex(reflect.ValueOf(mapKey))
 		vvElem = resolvePotentialPointer(vvElem)
 
 		if vvElem.IsValid() && vvElem.CanInterface() {
-			return vvElem.Interface()
+			return vvElem.Interface(), true
 		}
 	case reflect.Slice, reflect.Array, reflect.String:
 		if i := NewValue("", key).Int(); i >= 0 && vvElem.Len() > i {
 			vvElem = resolvePotentialPointer(vvElem.Index(i))
 			if vvElem.IsValid() && vvElem.CanInterface() {
-				return vvElem.Interface()
+				return vvElem.Interface(), true
 			}
 		}
 	case reflect.Struct:
 		field := vvElem.FieldByName(key)
 		if field.IsValid() && field.CanInterface() {
-			return field.Interface()
+			return field.Interface(), true
 		}
 		method := vv.MethodByName(key)
 		if !method.IsValid() {
 			method = vvElem.MethodByName(key)
 		}
 		if method.IsValid() {
-			return method.Interface()
+			return method.Interface(), true
 		}
 	default:
-		return nil
+		return nil, false
 	}
 
-	return nil
+	return nil, false
 }
 
-func selectStringMap[V any](values map[string]V, key string) any {
-	return values[key]
+func selectStringMap[V any](values map[string]V, key string) (any, bool) {
+	val, ok := values[key]
+	return val, ok
 }
 
 func selectStringMapPath[V any](values map[string]V, key string) (any, bool) {
@@ -148,11 +154,11 @@ func selectStringMapPath[V any](values map[string]V, key string) (any, bool) {
 	return val, ok
 }
 
-func selectSlice[V any](values []V, key string) any {
+func selectSlice[V any](values []V, key string) (any, bool) {
 	if i := parseIndex(key); i >= 0 && len(values) > i {
-		return values[i]
+		return values[i], true
 	}
-	return nil
+	return nil, false
 }
 
 func selectSlicePath[V any](values []V, key string) (any, bool) {

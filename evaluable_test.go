@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -99,16 +100,33 @@ func TestEvalAndCompileModes(t *testing.T) {
 		"nested": map[string]bool{
 			"ok": true,
 		},
-		"flags": []bool{true},
+		"keyword_fields": map[string]any{
+			"contains":    "AWS Marketplace",
+			"starts_with": "GoEval",
+			"not":         true,
+		},
+		"contains":    true,
+		"starts_with": "Go",
+		"ends_with":   "Eval",
+		"between":     3,
+		"within_last": "window",
+		"in":          "membership",
+		"not":         false,
+		"flags":       []bool{true},
 		"foo bar": map[string]any{
 			"foo baz": map[string]any{"data": "baz"},
 		},
 	}
 	builtinParams := map[string]any{
-		"name":    "  GoEval  ",
-		"email":   "dev@company.com",
-		"tags":    []string{"go", "rules"},
-		"missing": nil,
+		"name":               "  GoEval  ",
+		"email":              "dev@company.com",
+		"tags":               []string{"go", "rules"},
+		"amount":             100,
+		"created_at":         "2024-02-20 12:00:00",
+		"start_at":           "2024-02-20 00:00:00",
+		"end_at":             "2024-02-21 00:00:00",
+		"event_triggered_at": "2024-02-23 12:00:00",
+		"missing":            nil,
 	}
 	runExpressionCases(t, e, []expressionCase{
 		{name: "true literal", expr: `true`, want: true},
@@ -121,6 +139,7 @@ func TestEvalAndCompileModes(t *testing.T) {
 		{name: "backtick in string", expr: "str == 'a`bc'", args: []any{map[string]any{"str": "a`bc"}}, want: true},
 		{name: "string literal comparison", expr: `"abc" == "abc"`, want: true},
 		{name: "array membership miss", expr: `a in [3,4,5]`, args: []any{map[string]any{"a": 2}}, want: false},
+		{name: "array not in", expr: `a not in [3,4,5]`, args: []any{map[string]any{"a": 2}}, want: true},
 		{name: "array membership variable", expr: `a in [3,4,5,b]`, args: []any{map[string]any{"a": 7, "b": 7}}, want: true},
 		{name: "string array membership", expr: `a in b`, args: []any{map[string]any{"a": 7, "b": "[7]"}}, want: true},
 		{name: "slice membership", expr: `a in b`, args: []any{map[string]any{"a": 7, "b": []int{7}}}, want: true},
@@ -128,6 +147,17 @@ func TestEvalAndCompileModes(t *testing.T) {
 		{name: "json path gjson fallback", expr: `$["a.b.#"] == 2`, args: []any{map[string]any{"a": map[string]any{"b": []int{7, 8}}}}, want: true},
 		{name: "underscore identifier", expr: `__hour > 6`, args: []any{map[string]any{"__hour": 7}}, want: true},
 		{name: "special nested parameter", expr: `$.["foo bar"].$.["foo baz"].data == "baz"`, args: []any{params}, want: true},
+		{name: "keyword field contains", expr: `keyword_fields.contains contains "AWS"`, args: []any{params}, want: true},
+		{name: "keyword field starts with", expr: `keyword_fields.starts_with starts_with "Go"`, args: []any{params}, want: true},
+		{name: "keyword field not", expr: `keyword_fields.not`, args: []any{params}, want: true},
+		{name: "keyword bracket field", expr: `keyword_fields["contains"] contains "AWS"`, args: []any{params}, want: true},
+		{name: "keyword root variable contains", expr: `contains == true`, args: []any{params}, want: true},
+		{name: "keyword root variable starts_with", expr: `starts_with == "Go"`, args: []any{params}, want: true},
+		{name: "keyword root variable ends_with", expr: `ends_with == "Eval"`, args: []any{params}, want: true},
+		{name: "keyword root variable between", expr: `between == 3`, args: []any{params}, want: true},
+		{name: "keyword root variable within_last", expr: `within_last == "window"`, args: []any{params}, want: true},
+		{name: "keyword root variable in", expr: `in == "membership"`, args: []any{params}, want: true},
+		{name: "keyword root variable not", expr: `not == false`, args: []any{params}, want: true},
 		{name: "custom max function", expr: `max(1,2,3,a)`, args: []any{params}, want: float64(7)},
 		{name: "subtraction without spaces", expr: `16-6`, want: float64(10)},
 		{name: "subtraction space before right", expr: `16 -6`, want: float64(10)},
@@ -160,7 +190,12 @@ func TestEvalAndCompileModes(t *testing.T) {
 		{name: "typed path fast path", expr: `flags[0] && nested.ok`, args: []any{params}, want: true},
 		{name: "overridden builtin value", expr: `max(1, 2, 3)`, want: float64(3)},
 		{name: "builtin contains", expr: `contains(email, "@company.com")`, args: []any{builtinParams}, want: true},
+		{name: "operator contains", expr: `email contains "@company.com"`, args: []any{builtinParams}, want: true},
+		{name: "operator not contains", expr: `email not contains "@example.com"`, args: []any{builtinParams}, want: true},
 		{name: "builtin trim prefix suffix", expr: `startsWith(trim(name), "Go") && endsWith(trim(name), "Eval")`, args: []any{builtinParams}, want: true},
+		{name: "builtin snake aliases", expr: `starts_with(trim(name), "Go") && ends_with(trim(name), "Eval") && not_empty(tags)`, args: []any{builtinParams}, want: true},
+		{name: "operator starts ends with", expr: `trim(name) starts_with "Go" && trim(name) ends_with "Eval"`, args: []any{builtinParams}, want: true},
+		{name: "operator not starts ends with", expr: `trim(name) not starts_with "No" && trim(name) not ends_with "No"`, args: []any{builtinParams}, want: true},
 		{name: "builtin lower upper", expr: `lower("GO") == "go" && upper("go") == "GO"`, args: []any{builtinParams}, want: true},
 		{name: "builtin replace", expr: `replace("go-eval-go", "go", "expr") == "expr-eval-expr"`, args: []any{builtinParams}, want: true},
 		{name: "builtin len", expr: `len(tags) == 2`, args: []any{builtinParams}, want: true},
@@ -171,6 +206,19 @@ func TestEvalAndCompileModes(t *testing.T) {
 		{name: "builtin coalesce default", expr: `coalesce("", 0, "ok") == "ok" && default("", "fallback") == "fallback"`, args: []any{builtinParams}, want: true},
 		{name: "builtin regex", expr: `matches(email, "^[^@]+@company\\.com$") && regex(email, "company")`, args: []any{builtinParams}, want: true},
 		{name: "builtin any all", expr: `any(false, "", true) && all(true, "true", true)`, args: []any{builtinParams}, want: true},
+		{name: "builtin between numeric lower bound", expr: `between(amount, 100, 500)`, args: []any{builtinParams}, want: true},
+		{name: "builtin between numeric upper bound", expr: `between(500, 100, 500)`, args: []any{builtinParams}, want: true},
+		{name: "builtin between numeric outside", expr: `between(99, 100, 500)`, args: []any{builtinParams}, want: false},
+		{name: "operator between numeric", expr: `amount between [100, 500]`, args: []any{builtinParams}, want: true},
+		{name: "operator not between numeric", expr: `99 not between [100, 500]`, args: []any{builtinParams}, want: true},
+		{name: "builtin between dates", expr: `between(date(created_at), date(start_at), date(end_at))`, args: []any{builtinParams}, want: true},
+		{name: "operator between dates", expr: `date(created_at) between [date(start_at), date(end_at)]`, args: []any{builtinParams}, want: true},
+		{name: "builtin withinLast inside", expr: `withinLast(date(created_at), duration("72h"), date(event_triggered_at))`, args: []any{builtinParams}, want: true},
+		{name: "builtin within_last alias", expr: `within_last(date(created_at), duration("72h"), date(event_triggered_at))`, args: []any{builtinParams}, want: true},
+		{name: "operator within_last inside", expr: `date(created_at) within_last [duration("72h"), date(event_triggered_at)]`, args: []any{builtinParams}, want: true},
+		{name: "builtin withinLast lower bound", expr: `withinLast(date("2024-02-20 12:00:00"), duration("72h"), date(event_triggered_at))`, args: []any{builtinParams}, want: true},
+		{name: "builtin withinLast outside", expr: `withinLast(date("2024-02-20 11:59:59"), duration("72h"), date(event_triggered_at))`, args: []any{builtinParams}, want: false},
+		{name: "operator within_last outside", expr: `date("2024-02-20 11:59:59") within_last [duration("72h"), date(event_triggered_at)]`, args: []any{builtinParams}, want: false},
 		{
 			name: "nested method call",
 			expr: "a.b.c.Value(d,5)",
@@ -245,6 +293,28 @@ func TestDateArgumentErrors(t *testing.T) {
 		`date("2024-02-20", "Bad/Location")`,
 		`date("2024-02-20", "UTC", 1)`,
 		`date("2024/02/20", "UTC", "2006-01-02")`,
+	}
+	for _, expr := range tests {
+		t.Run(expr, func(t *testing.T) {
+			if _, _, err := Full().Eval(expr); err == nil {
+				t.Fatal("Eval() error = nil, want error")
+			}
+			if _, err := Full().Compile(expr); err == nil {
+				t.Fatal("Compile() error = nil, want error")
+			}
+		})
+	}
+}
+
+func TestRiskBuiltinArgumentErrors(t *testing.T) {
+	tests := []string{
+		`between(1, 2)`,
+		`between("abc", 1, 2)`,
+		`1 between [1]`,
+		`withinLast(date("2024-02-20"), duration("24h"))`,
+		`withinLast(date("2024-02-20"), "24h", date("2024-02-21"))`,
+		`date("2024-02-20") within_last [duration("24h")]`,
+		`date("2024-02-20") within_last ["24h", date("2024-02-21")]`,
 	}
 	for _, expr := range tests {
 		t.Run(expr, func(t *testing.T) {
@@ -455,7 +525,7 @@ func TestDecimalContrastsFloatPrecision(t *testing.T) {
 }
 
 func TestCompileCache(t *testing.T) {
-	e := NewEvaluable()
+	e := New(WithCompileCache(2))
 	first, err := e.Compile(`a > 1`)
 	if err != nil {
 		t.Fatalf("Compile() error = %v", err)
@@ -468,7 +538,7 @@ func TestCompileCache(t *testing.T) {
 		t.Fatal("Compile() returned different pointers for cached expression")
 	}
 
-	uncached := NewEvaluable(WithCompileCache(0))
+	uncached := New()
 	first, err = uncached.Compile(`a > 1`)
 	if err != nil {
 		t.Fatalf("Compile() error = %v", err)
@@ -480,10 +550,26 @@ func TestCompileCache(t *testing.T) {
 	if first == second {
 		t.Fatal("Compile() returned cached pointer with cache disabled")
 	}
+
+	_, err = e.Compile(`b > 1`)
+	if err != nil {
+		t.Fatalf("Compile() b error = %v", err)
+	}
+	_, err = e.Compile(`c > 1`)
+	if err != nil {
+		t.Fatalf("Compile() c error = %v", err)
+	}
+	third, err := e.Compile(`a > 1`)
+	if err != nil {
+		t.Fatalf("Compile() recached error = %v", err)
+	}
+	if third == first {
+		t.Fatal("Compile() kept evicted LRU entry")
+	}
 }
 
 func TestCompileCacheSeparatesDecimalMode(t *testing.T) {
-	e := NewEvaluable()
+	e := New(WithCompileCache(2))
 	expr := `0.1 + 0.2 == 0.3`
 	floatCompiled, err := e.Compile(expr)
 	if err != nil {
@@ -511,6 +597,246 @@ func TestCompileCacheSeparatesDecimalMode(t *testing.T) {
 	}
 	if !got {
 		t.Fatal("decimal compiled expression = false, want true")
+	}
+}
+
+func TestNewAndFullFunctionSets(t *testing.T) {
+	e := New()
+	if _, err := e.EvalBool(`now() != nil`); err == nil {
+		t.Fatal("New().EvalBool() error = nil, want unknown function error")
+	}
+	if _, err := e.Compile(`contains(name, "x")`); err == nil {
+		t.Fatal("New().Compile() error = nil, want unknown function error")
+	}
+
+	e = New(WithFunc("ok", func(args ...any) (any, error) {
+		return true, nil
+	}))
+	matched, err := e.EvalBool(`ok()`)
+	if err != nil {
+		t.Fatalf("EvalBool(ok) error = %v", err)
+	}
+	if !matched {
+		t.Fatal("EvalBool(ok) = false, want true")
+	}
+
+	matched, err = Full().EvalBool(`contains("xyz", "x")`)
+	if err != nil {
+		t.Fatalf("Full().EvalBool(contains) error = %v", err)
+	}
+	if !matched {
+		t.Fatal("Full().EvalBool(contains) = false, want true")
+	}
+}
+
+func TestEvalMapAPIs(t *testing.T) {
+	e := New(WithCompileCache(2))
+	val, vars, err := e.EvalMap(`a + b`, map[string]any{"a": 1, "b": 2})
+	if err != nil {
+		t.Fatalf("EvalMap() error = %v", err)
+	}
+	if val.val != float64(3) {
+		t.Fatalf("EvalMap() value = %#v, want 3", val.val)
+	}
+	if !reflect.DeepEqual(vars, []string{"a", "b"}) {
+		t.Fatalf("EvalMap() vars = %#v, want a,b", vars)
+	}
+	if got, err := e.EvalMapBool(`a > 1 && b < 10`, map[string]any{"a": 2, "b": 3}); err != nil || !got {
+		t.Fatalf("EvalMapBool() = %v, %v; want true, nil", got, err)
+	}
+	if got, err := e.EvalMapInt(`a + b`, map[string]any{"a": 1, "b": 2}); err != nil || got != 3 {
+		t.Fatalf("EvalMapInt() = %v, %v; want 3, nil", got, err)
+	}
+	if got, err := e.EvalMapFloat(`a + b`, map[string]any{"a": 1, "b": 2}); err != nil || got != 3 {
+		t.Fatalf("EvalMapFloat() = %v, %v; want 3, nil", got, err)
+	}
+	if got, err := e.EvalMapString(`name`, map[string]any{"name": "goeval"}); err != nil || got != "goeval" {
+		t.Fatalf("EvalMapString() = %q, %v; want goeval, nil", got, err)
+	}
+}
+
+func TestStrictVariables(t *testing.T) {
+	e := New(WithStrictVariables(true))
+
+	_, err := e.EvalMapBool(`a > 1`, map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "a") {
+		t.Fatalf("missing top-level variable error = %v, want a", err)
+	}
+
+	_, err = e.EvalMapBool(`user.account.id == "1"`, map[string]any{
+		"user": map[string]any{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "user.account") {
+		t.Fatalf("missing path error = %v, want user.account", err)
+	}
+
+	_, err = e.EvalMapBool(`items[2] == 1`, map[string]any{
+		"items": []int{1},
+	})
+	if err == nil || !strings.Contains(err.Error(), "items[2]") {
+		t.Fatalf("missing index error = %v, want items[2]", err)
+	}
+
+	_, err = e.EvalMapBool(`$["items.1.price"] > 0`, map[string]any{
+		"items": []map[string]any{{"price": 10}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "items.1.price") {
+		t.Fatalf("missing JSON path error = %v, want items.1.price", err)
+	}
+
+	matched, err := New().EvalMapBool(`a > 1`, map[string]any{})
+	if err != nil {
+		t.Fatalf("non-strict missing variable error = %v", err)
+	}
+	if matched {
+		t.Fatal("non-strict missing variable matched, want false")
+	}
+}
+
+func TestUndefinedFunctionError(t *testing.T) {
+	_, err := New().Compile(`missingFn(a)`)
+	if err == nil || !strings.Contains(err.Error(), `undefined function "missingFn"`) {
+		t.Fatalf("Compile() error = %v, want undefined function name", err)
+	}
+
+	_, err = New().EvalBool(`missingFn(a)`, map[string]any{"a": 1})
+	if err == nil || !strings.Contains(err.Error(), `undefined function "missingFn"`) {
+		t.Fatalf("EvalBool() error = %v, want undefined function name", err)
+	}
+}
+
+func TestCompiledExpressionConcurrentEval(t *testing.T) {
+	e := New(WithStrictVariables(true))
+	compiled, err := e.Compile(`a >= 3 && b < 7`)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 100)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 1000; j++ {
+				matched, err := compiled.EvalMapBool(map[string]any{
+					"a": 3,
+					"b": 2,
+				})
+				if err != nil {
+					errs <- err
+					return
+				}
+				if !matched {
+					errs <- fmt.Errorf("matched = false")
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+}
+
+func TestWithFuncsAndCompiledFunctionSnapshot(t *testing.T) {
+	e := New(WithFuncs(map[string]Func{
+		"contains": func(args ...any) (any, error) {
+			return strings.Contains(fmt.Sprint(args[0]), fmt.Sprint(args[1])), nil
+		},
+	}))
+	compiled, err := e.Compile(`contains(name, "x")`)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	WithFunc("contains", func(args ...any) (any, error) {
+		return false, nil
+	})(e)
+
+	matched, err := compiled.EvalMapBool(map[string]any{"name": "xyz"})
+	if err != nil {
+		t.Fatalf("Compiled EvalMapBool() error = %v", err)
+	}
+	if !matched {
+		t.Fatal("Compiled EvalMapBool() = false, want snapshot to remain true")
+	}
+}
+
+func TestCustomFunctionAliases(t *testing.T) {
+	riskScore := func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("riskScore() expects exactly one argument")
+		}
+		return NewValue("", args[0]).Float() * 2, nil
+	}
+	e := New(
+		WithFunc("riskScore", riskScore, "risk_score"),
+		WithFuncAlias("riskScore", "score"),
+	)
+
+	for _, expr := range []string{
+		`riskScore(amount) == 20`,
+		`risk_score(amount) == 20`,
+		`score(amount) == 20`,
+	} {
+		t.Run(expr, func(t *testing.T) {
+			matched, err := e.EvalMapBool(expr, map[string]any{"amount": 10})
+			if err != nil {
+				t.Fatalf("EvalMapBool() error = %v", err)
+			}
+			if !matched {
+				t.Fatal("EvalMapBool() = false, want true")
+			}
+
+			compiled, err := e.Compile(expr)
+			if err != nil {
+				t.Fatalf("Compile() error = %v", err)
+			}
+			matched, err = compiled.EvalMapBool(map[string]any{"amount": 10})
+			if err != nil {
+				t.Fatalf("Compiled EvalMapBool() error = %v", err)
+			}
+			if !matched {
+				t.Fatal("Compiled EvalMapBool() = false, want true")
+			}
+		})
+	}
+}
+
+func TestDecimalModeStringNumericEqualityAndIn(t *testing.T) {
+	e := New(WithDecimal(true))
+
+	matched, err := e.EvalMapBool(`amount == 0.3`, map[string]any{
+		"amount": "0.30",
+	})
+	if err != nil {
+		t.Fatalf("EvalMapBool(decimal equality) error = %v", err)
+	}
+	if !matched {
+		t.Fatal("EvalMapBool(decimal equality) = false, want true")
+	}
+
+	matched, err = e.EvalMapBool(`count in [1, 2, 3]`, map[string]any{
+		"count": int64(3),
+	})
+	if err != nil {
+		t.Fatalf("EvalMapBool(decimal in) error = %v", err)
+	}
+	if !matched {
+		t.Fatal("EvalMapBool(decimal in) = false, want true")
+	}
+
+	full := Full(WithDecimal(true))
+	matched, err = full.EvalMapBool(`between(amount, 0.1, 0.3)`, map[string]any{
+		"amount": "0.30",
+	})
+	if err != nil {
+		t.Fatalf("EvalMapBool(decimal between) error = %v", err)
+	}
+	if !matched {
+		t.Fatal("EvalMapBool(decimal between) = false, want true")
 	}
 }
 

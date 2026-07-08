@@ -11,11 +11,12 @@ package goeval
 
 %type <node> start cond expr rel nested quote
 %type <nodes> params
+%type <name> keyword_name
 
 %token <node> C_VALUE
-%token C_EQ C_NEQ C_GTE C_LTE C_RE C_NRE C_AND C_OR C_NC C_IN
-%token <name> C_IDENTIFIER
-%left C_EQ C_NEQ C_GTE C_LTE C_RE C_NRE C_AND C_OR C_NC C_IN C_IDENTIFIER
+%token C_EQ C_NEQ C_GTE C_LTE C_RE C_NRE C_AND C_OR C_NC
+%token <name> C_IDENTIFIER C_IN C_CONTAINS C_STARTS_WITH C_ENDS_WITH C_BETWEEN C_WITHIN_LAST C_NOT
+%left C_EQ C_NEQ C_GTE C_LTE C_RE C_NRE C_AND C_OR C_NC C_IN C_CONTAINS C_STARTS_WITH C_ENDS_WITH C_BETWEEN C_WITHIN_LAST C_NOT C_IDENTIFIER
 %left '+' '-' '*' '/' '%' '<' '>' '?' ':' '=' '(' ')' ',' '[' ']'
 %right '!' C_UMINUS
 
@@ -41,8 +42,43 @@ expr:
     {
         $$ = functionNode{name: $1, args: $3}
     }
+    | keyword_name '(' params ')'
+    {
+        $$ = functionNode{name: $1, args: $3}
+    }
     | quote
     | nested
+;
+
+keyword_name:
+    C_CONTAINS
+    {
+        $$ = $1
+    }
+    | C_STARTS_WITH
+    {
+        $$ = $1
+    }
+    | C_ENDS_WITH
+    {
+        $$ = $1
+    }
+    | C_BETWEEN
+    {
+        $$ = $1
+    }
+    | C_WITHIN_LAST
+    {
+        $$ = $1
+    }
+    | C_IN
+    {
+        $$ = $1
+    }
+    | C_NOT
+    {
+        $$ = $1
+    }
 ;
 
 quote:
@@ -62,9 +98,14 @@ quote:
     {
         $$ = callNode{base: $1, args: $3}
     }
+;
 
 nested:
     C_IDENTIFIER
+    {
+        $$ = variableNode{name: $1}
+    }
+    | keyword_name %prec C_IDENTIFIER
     {
         $$ = variableNode{name: $1}
     }
@@ -80,6 +121,7 @@ nested:
     {
         $$ = callNode{base: $1, args: $3}
     }
+;
 
 params:
     {
@@ -125,6 +167,36 @@ rel:
 }
 | rel C_IN rel {
         $$ = binaryNode{op: opIn, left: $1, right: $3}
+}
+| rel C_NOT C_IN rel {
+        $$ = binaryNode{op: opNotIn, left: $1, right: $4}
+}
+| rel C_CONTAINS rel {
+        $$ = binaryNode{op: opContains, left: $1, right: $3}
+}
+| rel C_NOT C_CONTAINS rel {
+        $$ = binaryNode{op: opNotContains, left: $1, right: $4}
+}
+| rel C_STARTS_WITH rel {
+        $$ = binaryNode{op: opStartsWith, left: $1, right: $3}
+}
+| rel C_NOT C_STARTS_WITH rel {
+        $$ = binaryNode{op: opNotStartsWith, left: $1, right: $4}
+}
+| rel C_ENDS_WITH rel {
+        $$ = binaryNode{op: opEndsWith, left: $1, right: $3}
+}
+| rel C_NOT C_ENDS_WITH rel {
+        $$ = binaryNode{op: opNotEndsWith, left: $1, right: $4}
+}
+| rel C_BETWEEN rel {
+        $$ = binaryNode{op: opBetween, left: $1, right: $3}
+}
+| rel C_NOT C_BETWEEN rel {
+        $$ = binaryNode{op: opNotBetween, left: $1, right: $4}
+}
+| rel C_WITHIN_LAST rel {
+        $$ = binaryNode{op: opWithinLast, left: $1, right: $3}
 }
 | rel '<' rel {
         $$ = binaryNode{op: opLt, left: $1, right: $3}

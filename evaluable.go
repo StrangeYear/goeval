@@ -12,10 +12,11 @@ import (
 
 type Evaluable struct {
 	// custom functions
-	fns         map[string]Func
-	foldableFns map[string]struct{}
-	cache       *compileCache
-	useDecimal  bool
+	fns             map[string]Func
+	foldableFns     map[string]struct{}
+	cache           *compileCache
+	useDecimal      bool
+	strictVariables bool
 }
 
 type Func func(...any) (any, error)
@@ -24,17 +25,56 @@ type Operator func(any, any) (any, error)
 
 type Option func(*Evaluable)
 
-func WithFunc(name string, fn Func) Option {
+func WithFunc(name string, fn Func, aliases ...string) Option {
 	return func(e *Evaluable) {
-		e.fns[name] = fn
-		delete(e.foldableFns, name)
+		registerFunc(e, name, fn, false, aliases...)
 	}
 }
 
-func withFoldableFunc(name string, fn Func) Option {
+func WithFuncs(funcs map[string]Func) Option {
 	return func(e *Evaluable) {
-		e.fns[name] = fn
+		for name, fn := range funcs {
+			registerFunc(e, name, fn, false)
+		}
+	}
+}
+
+func WithFuncAlias(name string, aliases ...string) Option {
+	return func(e *Evaluable) {
+		fn := e.fns[name]
+		if fn == nil {
+			return
+		}
+		_, foldable := e.foldableFns[name]
+		for _, alias := range aliases {
+			registerFunc(e, alias, fn, foldable)
+		}
+	}
+}
+
+func withFoldableFunc(name string, fn Func, aliases ...string) Option {
+	return func(e *Evaluable) {
+		registerFunc(e, name, fn, true, aliases...)
+	}
+}
+
+func registerFunc(e *Evaluable, name string, fn Func, foldable bool, aliases ...string) {
+	e.fns[name] = fn
+	if foldable {
 		e.foldableFns[name] = struct{}{}
+	} else {
+		delete(e.foldableFns, name)
+	}
+	for _, alias := range aliases {
+		if alias == "" {
+			continue
+		}
+		e.fns[alias] = fn
+		if foldable {
+			e.foldableFns[alias] = struct{}{}
+		} else {
+			delete(e.foldableFns, alias)
+		}
 	}
 }
 
@@ -50,11 +90,16 @@ func WithDecimal(use bool) Option {
 	}
 }
 
-func NewEvaluable(opts ...Option) *Evaluable {
+func WithStrictVariables(enabled bool) Option {
+	return func(e *Evaluable) {
+		e.strictVariables = enabled
+	}
+}
+
+func New(opts ...Option) *Evaluable {
 	e := &Evaluable{
 		fns:         make(map[string]Func),
 		foldableFns: make(map[string]struct{}),
-		cache:       newCompileCache(defaultCompileCacheSize),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -62,7 +107,11 @@ func NewEvaluable(opts ...Option) *Evaluable {
 	return e
 }
 
-var full = NewEvaluable(defaultOptions()...)
+func NewEvaluable(opts ...Option) *Evaluable {
+	return Full(opts...)
+}
+
+var full = New(defaultOptions()...)
 
 func Full(opts ...Option) *Evaluable {
 	if len(opts) == 0 {
@@ -77,7 +126,7 @@ func Full(opts ...Option) *Evaluable {
 		}
 	}
 	defaults = append(defaults, opts...)
-	return NewEvaluable(defaults...)
+	return New(defaults...)
 }
 
 func (e *Evaluable) Eval(expr string, args ...any) (Value, []string, error) {
@@ -85,6 +134,24 @@ func (e *Evaluable) Eval(expr string, args ...any) (Value, []string, error) {
 }
 
 func (e *Evaluable) eval(expr string, collectTokens bool, args ...any) (val Value, tokens []string, err error) {
+	if e.strictVariables {
+		pArgs, err := parseArgs(args...)
+		if err != nil {
+			return nilValue, nil, err
+		}
+		compiled, err := e.Compile(expr)
+		if err != nil {
+			return nilValue, nil, err
+		}
+		val, err = compiled.EvalMap(pArgs)
+		if err != nil {
+			return nilValue, nil, err
+		}
+		if collectTokens {
+			tokens = compiled.Variables()
+		}
+		return val, tokens, nil
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			val = nilValue
@@ -131,6 +198,50 @@ func (e *Evaluable) EvalString(expr string, args ...any) (string, error) {
 		return "", err
 	}
 	return val.String(), nil
+}
+
+func (e *Evaluable) EvalMap(expr string, args map[string]any) (Value, []string, error) {
+	compiled, err := e.Compile(expr)
+	if err != nil {
+		return nilValue, nil, err
+	}
+	val, err := compiled.EvalMap(args)
+	if err != nil {
+		return nilValue, nil, err
+	}
+	return val, compiled.Variables(), nil
+}
+
+func (e *Evaluable) EvalMapBool(expr string, args map[string]any) (bool, error) {
+	compiled, err := e.Compile(expr)
+	if err != nil {
+		return false, err
+	}
+	return compiled.EvalMapBool(args)
+}
+
+func (e *Evaluable) EvalMapInt(expr string, args map[string]any) (int, error) {
+	compiled, err := e.Compile(expr)
+	if err != nil {
+		return 0, err
+	}
+	return compiled.EvalMapInt(args)
+}
+
+func (e *Evaluable) EvalMapFloat(expr string, args map[string]any) (float64, error) {
+	compiled, err := e.Compile(expr)
+	if err != nil {
+		return 0, err
+	}
+	return compiled.EvalMapFloat(args)
+}
+
+func (e *Evaluable) EvalMapString(expr string, args map[string]any) (string, error) {
+	compiled, err := e.Compile(expr)
+	if err != nil {
+		return "", err
+	}
+	return compiled.EvalMapString(args)
 }
 
 func Eval(expr string, args ...any) (Value, []string, error) {
@@ -193,8 +304,6 @@ func parseArgs(args ...any) (map[string]any, error) {
 	return pArgs, nil
 }
 
-const defaultCompileCacheSize = 256
-
 type compileCache struct {
 	mu     sync.Mutex
 	max    int
@@ -220,6 +329,9 @@ func (c *compileCache) get(expr string) (*CompiledExpression, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	compiled, ok := c.values[expr]
+	if ok {
+		c.touch(expr)
+	}
 	return compiled, ok
 }
 
@@ -231,6 +343,7 @@ func (c *compileCache) set(expr string, compiled *CompiledExpression) {
 	defer c.mu.Unlock()
 	if _, ok := c.values[expr]; ok {
 		c.values[expr] = compiled
+		c.touch(expr)
 		return
 	}
 	if len(c.order) >= c.max {
@@ -244,9 +357,20 @@ func (c *compileCache) set(expr string, compiled *CompiledExpression) {
 	c.values[expr] = compiled
 }
 
-func compileCacheKey(expr string, useDecimal bool) string {
-	if !useDecimal {
+func (c *compileCache) touch(expr string) {
+	for i, existing := range c.order {
+		if existing != expr {
+			continue
+		}
+		copy(c.order[i:], c.order[i+1:])
+		c.order[len(c.order)-1] = expr
+		return
+	}
+}
+
+func compileCacheKey(expr string, useDecimal, strictVariables bool) string {
+	if !useDecimal && !strictVariables {
 		return expr
 	}
-	return "decimal\x00" + expr
+	return fmt.Sprintf("decimal=%t\x00strict=%t\x00%s", useDecimal, strictVariables, expr)
 }

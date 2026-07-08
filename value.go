@@ -396,6 +396,16 @@ func (v Value) Or(v2 Value) Value {
 }
 
 func (v Value) Eq(v2 Value) Value {
+	if useDecimalMath(v, v2) {
+		left, leftOK := decimalValue(v)
+		right, rightOK := decimalValue(v2)
+		if leftOK && rightOK {
+			return Value{
+				val:   left.Equal(right),
+				vType: Boolean,
+			}
+		}
+	}
 	return Value{
 		val:   v.String() == v2.String(),
 		vType: Boolean,
@@ -732,6 +742,21 @@ func isDecimalNumber(v Value) bool {
 	}
 	_, ok := v.val.(decimal.Decimal)
 	return ok
+}
+
+func decimalValue(v Value) (val decimal.Decimal, ok bool) {
+	switch v.vType {
+	case Number, String, Json:
+	default:
+		return decimal.Decimal{}, false
+	}
+	defer func() {
+		if recover() != nil {
+			val = decimal.Decimal{}
+			ok = false
+		}
+	}()
+	return v.Decimal(), true
 }
 
 func isNumberZero(v Value) bool {

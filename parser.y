@@ -11,10 +11,11 @@ package goeval
 
 %type <val> start cond expr rel nested quote
 %type <vals> params
+%type <name> keyword_name
 
-%token <val> VALUE EQ NEQ GTE LTE RE NRE AND OR NC IN
-%token <name> IDENTIFIER
-%left EQ NEQ GTE LTE RE NRE AND OR NC IN IDENTIFIER
+%token <val> VALUE EQ NEQ GTE LTE RE NRE AND OR NC
+%token <name> IDENTIFIER IN CONTAINS STARTS_WITH ENDS_WITH BETWEEN WITHIN_LAST NOT
+%left EQ NEQ GTE LTE RE NRE AND OR NC IN CONTAINS STARTS_WITH ENDS_WITH BETWEEN WITHIN_LAST NOT IDENTIFIER
 %left '+' '-' '*' '/' '%' '<' '>' '?' ':' '=' '(' ')' ',' '[' ']'
 %right '!' UMINUS
 
@@ -40,7 +41,19 @@ expr:
     {
         fn := yylex.(*lexer).fns[$1]
         if fn == nil {
-            panic(__yyfmt__.Errorf("unknown function %s", $1))
+            panic(__yyfmt__.Errorf("undefined function %q", $1))
+        }
+        res, err := fn($3...)
+        if err != nil {
+            panic(err)
+        }
+        $$ = yylex.(*lexer).newValue("", res)
+    }
+    | keyword_name '(' params ')'
+    {
+        fn := yylex.(*lexer).fns[$1]
+        if fn == nil {
+            panic(__yyfmt__.Errorf("undefined function %q", $1))
         }
         res, err := fn($3...)
         if err != nil {
@@ -50,6 +63,37 @@ expr:
     }
     | quote
     | nested
+;
+
+keyword_name:
+    CONTAINS
+    {
+        $$ = $1
+    }
+    | STARTS_WITH
+    {
+        $$ = $1
+    }
+    | ENDS_WITH
+    {
+        $$ = $1
+    }
+    | BETWEEN
+    {
+        $$ = $1
+    }
+    | WITHIN_LAST
+    {
+        $$ = $1
+    }
+    | IN
+    {
+        $$ = $1
+    }
+    | NOT
+    {
+        $$ = $1
+    }
 ;
 
 quote:
@@ -79,9 +123,15 @@ quote:
         name := callName($1.name)
         $$ = yylex.(*lexer).newValue(name, val)
     }
+;
 
 nested:
     IDENTIFIER
+    {
+        val := yylex.(*lexer).kv[$1]
+        $$ = yylex.(*lexer).newValue($1, val)
+    }
+    | keyword_name %prec IDENTIFIER
     {
         val := yylex.(*lexer).kv[$1]
         $$ = yylex.(*lexer).newValue($1, val)
@@ -108,6 +158,7 @@ nested:
         name := callName($1.name)
         $$ = yylex.(*lexer).newValue(name, val)
     }
+;
 
 params:
     {
@@ -153,6 +204,36 @@ rel:
 }
 | rel IN rel {
 	$$ = $1.In($3)
+}
+| rel NOT IN rel {
+	$$ = $1.In($4).Not()
+}
+| rel CONTAINS rel {
+	$$ = evalStringOperatorValue("contains", $1, $3)
+}
+| rel NOT CONTAINS rel {
+	$$ = evalStringOperatorValue("contains", $1, $4).Not()
+}
+| rel STARTS_WITH rel {
+	$$ = evalStringOperatorValue("starts_with", $1, $3)
+}
+| rel NOT STARTS_WITH rel {
+	$$ = evalStringOperatorValue("starts_with", $1, $4).Not()
+}
+| rel ENDS_WITH rel {
+	$$ = evalStringOperatorValue("ends_with", $1, $3)
+}
+| rel NOT ENDS_WITH rel {
+	$$ = evalStringOperatorValue("ends_with", $1, $4).Not()
+}
+| rel BETWEEN rel {
+	$$ = evalBetweenOperatorValue($1, $3)
+}
+| rel NOT BETWEEN rel {
+	$$ = evalBetweenOperatorValue($1, $4).Not()
+}
+| rel WITHIN_LAST rel {
+	$$ = evalWithinLastOperatorValue($1, $3)
 }
 | rel '<' rel {
 	$$ = $1.Lt($3)

@@ -31,11 +31,16 @@ var _expression_key_offsets []int16 = []int16{
 	35, 36, 38, 41, 43, 45, 48, 50,
 	52, 55, 57, 59, 60, 61, 64, 66,
 	67, 69, 72, 74, 76, 79, 81, 83,
-	86, 88, 90, 92, 122, 125, 127, 129,
-	131, 133, 135, 137, 139, 141, 143, 144,
-	146, 154, 156, 158, 160, 167, 170, 172,
-	173, 175, 176, 177, 184, 186, 194, 202,
-	210, 218, 226, 234, 242, 250, 258,
+	86, 88, 90, 92, 127, 130, 132, 134,
+	136, 138, 140, 142, 144, 146, 148, 149,
+	151, 159, 161, 163, 165, 172, 175, 177,
+	178, 180, 181, 182, 189, 191, 199, 207,
+	215, 223, 231, 239, 247, 255, 263, 271,
+	279, 287, 295, 303, 311, 319, 326, 334,
+	342, 350, 358, 366, 374, 382, 390, 399,
+	407, 415, 423, 431, 439, 447, 455, 463,
+	471, 479, 487, 495, 503, 510, 518, 526,
+	534,
 }
 
 var _expression_trans_keys []byte = []byte{
@@ -52,26 +57,60 @@ var _expression_trans_keys []byte = []byte{
 	96, 92, 96, 92, 93, 96, 48, 57,
 	92, 96, 92, 96, 32, 33, 34, 36,
 	38, 39, 46, 58, 60, 61, 62, 63,
-	91, 93, 96, 102, 105, 110, 116, 124,
-	9, 13, 37, 47, 48, 57, 65, 90,
-	95, 122, 32, 9, 13, 61, 126, 34,
-	92, 46, 91, 34, 92, 39, 92, 92,
-	96, 34, 92, 39, 92, 92, 96, 38,
-	39, 92, 36, 95, 48, 57, 65, 90,
-	97, 122, 34, 92, 39, 92, 92, 96,
-	95, 48, 57, 65, 90, 97, 122, 46,
-	48, 57, 48, 57, 61, 61, 126, 61,
-	63, 95, 48, 57, 65, 90, 97, 122,
-	92, 96, 95, 97, 48, 57, 65, 90,
-	98, 122, 95, 108, 48, 57, 65, 90,
-	97, 122, 95, 115, 48, 57, 65, 90,
-	97, 122, 95, 101, 48, 57, 65, 90,
-	97, 122, 95, 110, 48, 57, 65, 90,
-	97, 122, 95, 105, 48, 57, 65, 90,
-	97, 122, 95, 108, 48, 57, 65, 90,
-	97, 122, 95, 114, 48, 57, 65, 90,
-	97, 122, 95, 117, 48, 57, 65, 90,
-	97, 122, 124,
+	91, 93, 96, 98, 99, 101, 102, 105,
+	110, 115, 116, 119, 124, 9, 13, 37,
+	47, 48, 57, 65, 90, 95, 122, 32,
+	9, 13, 61, 126, 34, 92, 46, 91,
+	34, 92, 39, 92, 92, 96, 34, 92,
+	39, 92, 92, 96, 38, 39, 92, 36,
+	95, 48, 57, 65, 90, 97, 122, 34,
+	92, 39, 92, 92, 96, 95, 48, 57,
+	65, 90, 97, 122, 46, 48, 57, 48,
+	57, 61, 61, 126, 61, 63, 95, 48,
+	57, 65, 90, 97, 122, 92, 96, 95,
+	101, 48, 57, 65, 90, 97, 122, 95,
+	116, 48, 57, 65, 90, 97, 122, 95,
+	119, 48, 57, 65, 90, 97, 122, 95,
+	101, 48, 57, 65, 90, 97, 122, 95,
+	101, 48, 57, 65, 90, 97, 122, 95,
+	110, 48, 57, 65, 90, 97, 122, 95,
+	111, 48, 57, 65, 90, 97, 122, 95,
+	110, 48, 57, 65, 90, 97, 122, 95,
+	116, 48, 57, 65, 90, 97, 122, 95,
+	97, 48, 57, 65, 90, 98, 122, 95,
+	105, 48, 57, 65, 90, 97, 122, 95,
+	110, 48, 57, 65, 90, 97, 122, 95,
+	115, 48, 57, 65, 90, 97, 122, 95,
+	110, 48, 57, 65, 90, 97, 122, 95,
+	100, 48, 57, 65, 90, 97, 122, 95,
+	115, 48, 57, 65, 90, 97, 122, 95,
+	48, 57, 65, 90, 97, 122, 95, 119,
+	48, 57, 65, 90, 97, 122, 95, 105,
+	48, 57, 65, 90, 97, 122, 95, 116,
+	48, 57, 65, 90, 97, 122, 95, 104,
+	48, 57, 65, 90, 97, 122, 95, 97,
+	48, 57, 65, 90, 98, 122, 95, 108,
+	48, 57, 65, 90, 97, 122, 95, 115,
+	48, 57, 65, 90, 97, 122, 95, 101,
+	48, 57, 65, 90, 97, 122, 95, 105,
+	111, 48, 57, 65, 90, 97, 122, 95,
+	108, 48, 57, 65, 90, 97, 122, 95,
+	116, 48, 57, 65, 90, 97, 122, 95,
+	116, 48, 57, 65, 90, 97, 122, 95,
+	97, 48, 57, 65, 90, 98, 122, 95,
+	114, 48, 57, 65, 90, 97, 122, 95,
+	116, 48, 57, 65, 90, 97, 122, 95,
+	114, 48, 57, 65, 90, 97, 122, 95,
+	117, 48, 57, 65, 90, 97, 122, 95,
+	105, 48, 57, 65, 90, 97, 122, 95,
+	116, 48, 57, 65, 90, 97, 122, 95,
+	104, 48, 57, 65, 90, 97, 122, 95,
+	105, 48, 57, 65, 90, 97, 122, 95,
+	110, 48, 57, 65, 90, 97, 122, 95,
+	48, 57, 65, 90, 97, 122, 95, 108,
+	48, 57, 65, 90, 97, 122, 95, 97,
+	48, 57, 65, 90, 98, 122, 95, 115,
+	48, 57, 65, 90, 97, 122, 124,
 }
 
 var _expression_single_lengths []byte = []byte{
@@ -80,11 +119,16 @@ var _expression_single_lengths []byte = []byte{
 	1, 2, 3, 2, 2, 3, 2, 2,
 	3, 2, 2, 1, 1, 3, 2, 1,
 	2, 3, 2, 2, 3, 2, 2, 3,
-	0, 2, 2, 20, 1, 2, 2, 2,
+	0, 2, 2, 25, 1, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 1, 2,
 	2, 2, 2, 2, 1, 1, 0, 1,
 	2, 1, 1, 1, 2, 2, 2, 2,
-	2, 2, 2, 2, 2, 2, 1,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	2, 2, 2, 2, 2, 1, 2, 2,
+	2, 2, 2, 2, 2, 2, 3, 2,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	2, 2, 2, 2, 1, 2, 2, 2,
+	1,
 }
 
 var _expression_range_lengths []byte = []byte{
@@ -97,7 +141,12 @@ var _expression_range_lengths []byte = []byte{
 	0, 0, 0, 0, 0, 0, 0, 0,
 	3, 0, 0, 0, 3, 1, 1, 0,
 	0, 0, 0, 3, 0, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 0,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	0,
 }
 
 var _expression_index_offsets []int16 = []int16{
@@ -106,11 +155,16 @@ var _expression_index_offsets []int16 = []int16{
 	51, 53, 56, 60, 63, 66, 70, 73,
 	76, 80, 83, 86, 88, 90, 94, 97,
 	99, 102, 106, 109, 112, 116, 119, 122,
-	126, 128, 131, 134, 160, 163, 166, 169,
-	172, 175, 178, 181, 184, 187, 190, 192,
-	195, 201, 204, 207, 210, 215, 218, 220,
-	222, 225, 227, 229, 234, 237, 243, 249,
-	255, 261, 267, 273, 279, 285, 291,
+	126, 128, 131, 134, 165, 168, 171, 174,
+	177, 180, 183, 186, 189, 192, 195, 197,
+	200, 206, 209, 212, 215, 220, 223, 225,
+	227, 230, 232, 234, 239, 242, 248, 254,
+	260, 266, 272, 278, 284, 290, 296, 302,
+	308, 314, 320, 326, 332, 338, 343, 349,
+	355, 361, 367, 373, 379, 385, 391, 398,
+	404, 410, 416, 422, 428, 434, 440, 446,
+	452, 458, 464, 470, 476, 481, 487, 493,
+	499,
 }
 
 var _expression_indicies []byte = []byte{
@@ -133,24 +187,50 @@ var _expression_indicies []byte = []byte{
 	57, 2, 56, 57, 58, 56, 60, 61,
 	62, 63, 65, 66, 67, 64, 69, 70,
 	71, 72, 64, 64, 74, 75, 76, 77,
-	78, 79, 60, 64, 68, 73, 73, 59,
-	60, 60, 80, 82, 83, 81, 2, 3,
-	1, 85, 86, 84, 10, 11, 7, 10,
-	15, 8, 18, 10, 9, 24, 25, 21,
-	24, 29, 22, 32, 24, 23, 89, 84,
-	2, 36, 35, 90, 91, 91, 91, 91,
-	84, 43, 44, 40, 43, 48, 41, 51,
-	43, 42, 91, 91, 91, 91, 93, 95,
-	68, 94, 55, 94, 96, 81, 97, 98,
-	81, 99, 81, 100, 81, 73, 73, 73,
-	73, 0, 57, 2, 56, 73, 102, 73,
-	73, 73, 101, 73, 103, 73, 73, 73,
-	101, 73, 104, 73, 73, 73, 101, 73,
-	105, 73, 73, 73, 101, 73, 106, 73,
-	73, 73, 101, 73, 107, 73, 73, 73,
-	101, 73, 108, 73, 73, 73, 101, 73,
-	109, 73, 73, 73, 101, 73, 104, 73,
-	73, 73, 101, 110, 84,
+	78, 79, 80, 81, 82, 83, 84, 60,
+	64, 68, 73, 73, 59, 60, 60, 85,
+	87, 88, 86, 2, 3, 1, 90, 91,
+	89, 10, 11, 7, 10, 15, 8, 18,
+	10, 9, 24, 25, 21, 24, 29, 22,
+	32, 24, 23, 94, 89, 2, 36, 35,
+	95, 96, 96, 96, 96, 89, 43, 44,
+	40, 43, 48, 41, 51, 43, 42, 96,
+	96, 96, 96, 98, 100, 68, 99, 55,
+	99, 101, 86, 102, 103, 86, 104, 86,
+	105, 86, 73, 73, 73, 73, 0, 57,
+	2, 56, 73, 107, 73, 73, 73, 106,
+	73, 108, 73, 73, 73, 106, 73, 109,
+	73, 73, 73, 106, 73, 110, 73, 73,
+	73, 106, 73, 79, 73, 73, 73, 106,
+	73, 111, 73, 73, 73, 106, 73, 112,
+	73, 73, 73, 106, 73, 113, 73, 73,
+	73, 106, 73, 114, 73, 73, 73, 106,
+	73, 115, 73, 73, 73, 106, 73, 116,
+	73, 73, 73, 106, 73, 117, 73, 73,
+	73, 106, 73, 111, 73, 73, 73, 106,
+	73, 118, 73, 73, 73, 106, 73, 119,
+	73, 73, 73, 106, 73, 120, 73, 73,
+	73, 106, 121, 73, 73, 73, 106, 73,
+	122, 73, 73, 73, 106, 73, 123, 73,
+	73, 73, 106, 73, 124, 73, 73, 73,
+	106, 73, 111, 73, 73, 73, 106, 73,
+	125, 73, 73, 73, 106, 73, 126, 73,
+	73, 73, 106, 73, 127, 73, 73, 73,
+	106, 73, 128, 73, 73, 73, 106, 73,
+	129, 130, 73, 73, 73, 106, 73, 131,
+	73, 73, 73, 106, 73, 111, 73, 73,
+	73, 106, 73, 132, 73, 73, 73, 106,
+	73, 133, 73, 73, 73, 106, 73, 134,
+	73, 73, 73, 106, 73, 119, 73, 73,
+	73, 106, 73, 135, 73, 73, 73, 106,
+	73, 127, 73, 73, 73, 106, 73, 136,
+	73, 73, 73, 106, 73, 137, 73, 73,
+	73, 106, 73, 138, 73, 73, 73, 106,
+	73, 139, 73, 73, 73, 106, 73, 140,
+	73, 73, 73, 106, 141, 73, 73, 73,
+	106, 73, 142, 73, 73, 73, 106, 73,
+	143, 73, 73, 73, 106, 73, 130, 73,
+	73, 73, 106, 144, 89,
 }
 
 var _expression_trans_targs []byte = []byte{
@@ -163,11 +243,16 @@ var _expression_trans_targs []byte = []byte{
 	35, 36, 58, 38, 39, 59, 43, 62,
 	41, 42, 68, 43, 44, 45, 46, 47,
 	43, 54, 55, 56, 61, 63, 64, 65,
-	66, 67, 68, 69, 73, 74, 76, 78,
-	43, 43, 43, 43, 43, 2, 14, 43,
-	43, 43, 27, 60, 43, 43, 43, 40,
-	43, 43, 43, 43, 43, 43, 70, 71,
-	72, 67, 67, 75, 67, 77, 43,
+	66, 67, 68, 69, 75, 82, 90, 74,
+	94, 97, 101, 103, 112, 43, 43, 43,
+	43, 43, 2, 14, 43, 43, 43, 27,
+	60, 43, 43, 43, 40, 43, 43, 43,
+	43, 43, 43, 70, 71, 72, 73, 67,
+	76, 77, 78, 79, 80, 81, 83, 84,
+	85, 86, 87, 88, 89, 91, 92, 93,
+	67, 95, 96, 67, 98, 99, 100, 102,
+	104, 105, 106, 107, 108, 109, 110, 111,
+	43,
 }
 
 var _expression_trans_actions []byte = []byte{
@@ -181,10 +266,15 @@ var _expression_trans_actions []byte = []byte{
 	0, 0, 61, 35, 0, 0, 85, 85,
 	33, 0, 85, 85, 5, 0, 0, 0,
 	0, 73, 85, 0, 0, 0, 0, 0,
-	49, 51, 11, 19, 53, 0, 0, 47,
-	45, 21, 0, 0, 43, 41, 37, 0,
-	15, 9, 17, 13, 25, 39, 0, 0,
-	0, 64, 70, 0, 67, 0, 23,
+	0, 0, 0, 0, 0, 49, 51, 11,
+	19, 53, 0, 0, 47, 45, 21, 0,
+	0, 43, 41, 37, 0, 15, 9, 17,
+	13, 25, 39, 0, 0, 0, 0, 70,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	64, 0, 0, 67, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	23,
 }
 
 var _expression_to_state_actions []byte = []byte{
@@ -197,7 +287,12 @@ var _expression_to_state_actions []byte = []byte{
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0,
 }
 
 var _expression_from_state_actions []byte = []byte{
@@ -210,7 +305,12 @@ var _expression_from_state_actions []byte = []byte{
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0,
 }
 
 var _expression_eof_trans []int16 = []int16{
@@ -219,11 +319,16 @@ var _expression_eof_trans []int16 = []int16{
 	1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 6, 6, 6, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1,
-	55, 1, 1, 0, 81, 82, 1, 85,
-	88, 88, 88, 89, 89, 89, 85, 1,
-	85, 93, 93, 93, 94, 95, 95, 82,
-	82, 82, 82, 1, 1, 102, 102, 102,
-	102, 102, 102, 102, 102, 102, 85,
+	55, 1, 1, 0, 86, 87, 1, 90,
+	93, 93, 93, 94, 94, 94, 90, 1,
+	90, 98, 98, 98, 99, 100, 100, 87,
+	87, 87, 87, 1, 1, 107, 107, 107,
+	107, 107, 107, 107, 107, 107, 107, 107,
+	107, 107, 107, 107, 107, 107, 107, 107,
+	107, 107, 107, 107, 107, 107, 107, 107,
+	107, 107, 107, 107, 107, 107, 107, 107,
+	107, 107, 107, 107, 107, 107, 107, 107,
+	90,
 }
 
 const expression_start int = 43
@@ -295,7 +400,7 @@ func newLexer(data string, kv map[string]any, fns map[string]Func, collectTokens
 		useDecimal:    useDecimal,
 	}
 
-//line lexer.go:303
+//line lexer.go:408
 	{
 		lex.cs = expression_start
 		lex.ts = 0
@@ -343,7 +448,7 @@ func (lex *lexer) next() (int, lexeme) {
 	tok := 0
 	var item lexeme
 
-//line lexer.go:352
+//line lexer.go:457
 	{
 		var _klen int
 		var _trans int
@@ -364,7 +469,7 @@ func (lex *lexer) next() (int, lexeme) {
 //line NONE:1
 				lex.ts = (lex.p)
 
-//line lexer.go:372
+//line lexer.go:477
 			}
 		}
 
@@ -440,34 +545,34 @@ func (lex *lexer) next() (int, lexeme) {
 				lex.te = (lex.p) + 1
 
 			case 3:
-//line lexer.rl:157
+//line lexer.rl:177
 				lex.act = 1
 			case 4:
 //line lexer.rl:121
 				lex.act = 3
 			case 5:
-//line lexer.rl:189
+//line lexer.rl:209
 				lex.act = 4
 			case 6:
-//line lexer.rl:203
+//line lexer.rl:137
 				lex.act = 14
 			case 7:
 //line lexer.rl:132
 				lex.act = 15
 			case 8:
-//line lexer.rl:147
+//line lexer.rl:167
 				lex.act = 17
 			case 9:
 //line lexer.rl:126
 				lex.act = 18
 			case 10:
-//line lexer.rl:137
+//line lexer.rl:157
 				lex.act = 19
 			case 11:
-//line lexer.rl:212
+//line lexer.rl:232
 				lex.act = 22
 			case 12:
-//line lexer.rl:157
+//line lexer.rl:177
 				lex.te = (lex.p) + 1
 				{
 					tok = VALUE
@@ -488,7 +593,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 13:
-//line lexer.rl:192
+//line lexer.rl:212
 				lex.te = (lex.p) + 1
 				{
 					tok = EQ
@@ -496,7 +601,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 14:
-//line lexer.rl:193
+//line lexer.rl:213
 				lex.te = (lex.p) + 1
 				{
 					tok = NEQ
@@ -504,7 +609,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 15:
-//line lexer.rl:194
+//line lexer.rl:214
 				lex.te = (lex.p) + 1
 				{
 					tok = GTE
@@ -512,7 +617,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 16:
-//line lexer.rl:195
+//line lexer.rl:215
 				lex.te = (lex.p) + 1
 				{
 					tok = LTE
@@ -520,7 +625,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 17:
-//line lexer.rl:196
+//line lexer.rl:216
 				lex.te = (lex.p) + 1
 				{
 					tok = RE
@@ -528,7 +633,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 18:
-//line lexer.rl:197
+//line lexer.rl:217
 				lex.te = (lex.p) + 1
 				{
 					tok = NRE
@@ -536,7 +641,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 19:
-//line lexer.rl:198
+//line lexer.rl:218
 				lex.te = (lex.p) + 1
 				{
 					tok = AND
@@ -544,7 +649,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 20:
-//line lexer.rl:199
+//line lexer.rl:219
 				lex.te = (lex.p) + 1
 				{
 					tok = OR
@@ -552,7 +657,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 21:
-//line lexer.rl:200
+//line lexer.rl:220
 				lex.te = (lex.p) + 1
 				{
 					tok = NC
@@ -560,7 +665,7 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 22:
-//line lexer.rl:147
+//line lexer.rl:167
 				lex.te = (lex.p) + 1
 				{
 					tok = IDENTIFIER
@@ -581,7 +686,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 24:
-//line lexer.rl:137
+//line lexer.rl:157
 				lex.te = (lex.p) + 1
 				{
 					tok = IDENTIFIER
@@ -591,7 +696,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 25:
-//line lexer.rl:211
+//line lexer.rl:231
 				lex.te = (lex.p) + 1
 				{
 					tok = int(lex.data[lex.ts])
@@ -599,13 +704,13 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 26:
-//line lexer.rl:212
+//line lexer.rl:232
 				lex.te = (lex.p) + 1
 				{
 					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 27:
-//line lexer.rl:152
+//line lexer.rl:172
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -627,7 +732,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 29:
-//line lexer.rl:142
+//line lexer.rl:162
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -638,7 +743,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 30:
-//line lexer.rl:147
+//line lexer.rl:167
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -661,7 +766,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 32:
-//line lexer.rl:137
+//line lexer.rl:157
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -672,12 +777,12 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 33:
-//line lexer.rl:210
+//line lexer.rl:230
 				lex.te = (lex.p)
 				(lex.p)--
 
 			case 34:
-//line lexer.rl:211
+//line lexer.rl:231
 				lex.te = (lex.p)
 				(lex.p)--
 				{
@@ -686,14 +791,14 @@ func (lex *lexer) next() (int, lexeme) {
 					goto _out
 				}
 			case 35:
-//line lexer.rl:212
+//line lexer.rl:232
 				lex.te = (lex.p)
 				(lex.p)--
 				{
 					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
 				}
 			case 36:
-//line lexer.rl:152
+//line lexer.rl:172
 				(lex.p) = (lex.te) - 1
 				{
 					tok = VALUE
@@ -703,7 +808,7 @@ func (lex *lexer) next() (int, lexeme) {
 
 				}
 			case 37:
-//line lexer.rl:212
+//line lexer.rl:232
 				(lex.p) = (lex.te) - 1
 				{
 					panic(lex.errorAt(lex.ts, "unexpected character %q", lex.data[lex.ts]))
@@ -753,9 +858,27 @@ func (lex *lexer) next() (int, lexeme) {
 				case 14:
 					{
 						(lex.p) = (lex.te) - 1
-						tok = IN
+
+						item.name = lex.token()
+						switch item.name {
+						case "contains":
+							tok = CONTAINS
+						case "starts_with":
+							tok = STARTS_WITH
+						case "ends_with":
+							tok = ENDS_WITH
+						case "between":
+							tok = BETWEEN
+						case "within_last":
+							tok = WITHIN_LAST
+						case "in":
+							tok = IN
+						case "not":
+							tok = NOT
+						}
 						(lex.p)++
 						goto _out
+
 					}
 				case 15:
 					{
@@ -805,7 +928,7 @@ func (lex *lexer) next() (int, lexeme) {
 					}
 				}
 
-//line lexer.go:741
+//line lexer.go:865
 			}
 		}
 
@@ -820,7 +943,7 @@ func (lex *lexer) next() (int, lexeme) {
 //line NONE:1
 				lex.ts = 0
 
-//line lexer.go:755
+//line lexer.go:879
 			}
 		}
 
@@ -843,7 +966,7 @@ func (lex *lexer) next() (int, lexeme) {
 		}
 	}
 
-//line lexer.rl:216
+//line lexer.rl:236
 
 	if tok != 0 && lex.collectTokens {
 		lex.tokens = append(lex.tokens, lex.token())
@@ -862,6 +985,8 @@ func (lex *lexer) Lex(out *yySymType) int {
 			out.val = item.val
 		}
 	case IDENTIFIER:
+		out.name = item.name
+	case CONTAINS, STARTS_WITH, ENDS_WITH, BETWEEN, WITHIN_LAST, IN, NOT:
 		out.name = item.name
 	}
 	return tok
@@ -885,6 +1010,27 @@ func (lex *compileLexerAdapter) Lex(out *compileSymType) int {
 	case IDENTIFIER:
 		out.name = item.name
 		return C_IDENTIFIER
+	case CONTAINS:
+		out.name = item.name
+		return C_CONTAINS
+	case STARTS_WITH:
+		out.name = item.name
+		return C_STARTS_WITH
+	case ENDS_WITH:
+		out.name = item.name
+		return C_ENDS_WITH
+	case BETWEEN:
+		out.name = item.name
+		return C_BETWEEN
+	case WITHIN_LAST:
+		out.name = item.name
+		return C_WITHIN_LAST
+	case NOT:
+		out.name = item.name
+		return C_NOT
+	case IN:
+		out.name = item.name
+		return C_IN
 	case EQ:
 		return C_EQ
 	case NEQ:
@@ -903,8 +1049,6 @@ func (lex *compileLexerAdapter) Lex(out *compileSymType) int {
 		return C_OR
 	case NC:
 		return C_NC
-	case IN:
-		return C_IN
 	default:
 		return tok
 	}

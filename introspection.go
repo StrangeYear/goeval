@@ -52,7 +52,7 @@ func (c *CompiledExpression) ExplainMap(args map[string]any) (steps []TraceStep,
 			err = fmt.Errorf("%v", r)
 		}
 	}()
-	ctx := &evalContext{kv: args, fns: c.fns, useDecimal: c.useDecimal}
+	ctx := c.newEvalContext(args)
 	trace := explainTrace{}
 	trace.eval(ctx, c.root)
 	return trace.steps, nil
@@ -113,7 +113,7 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 	case functionNode:
 		fn := ctx.fns[n.name]
 		if fn == nil {
-			panic(fmt.Errorf("unknown function %s", n.name))
+			panic(fmt.Errorf("undefined function %q", n.name))
 		}
 		res, err := fn(t.evalArgs(ctx, n.args)...)
 		if err != nil {
@@ -121,21 +121,13 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 		}
 		return t.add(nodeExpr(node), ctx.newValue("", res))
 	case variableNode:
-		return t.add(nodeExpr(node), ctx.newValue(n.name, ctx.kv[n.name]))
+		return t.add(nodeExpr(node), n.Eval(ctx))
 	case pathNode:
-		val := any(ctx.kv[n.root])
-		for _, step := range n.steps {
-			if step.isIndex {
-				val = selectStaticIndex(val, step.index, step.key)
-			} else {
-				val = SelectValue(val, step.key)
-			}
-		}
-		return t.add(nodeExpr(node), ctx.newValue(n.name, val))
+		return t.add(nodeExpr(node), n.Eval(ctx))
 	case selectNameNode:
 		base := t.eval(ctx, n.base)
 		name := base.name + "." + n.key
-		return t.add(nodeExpr(node), ctx.newValue(name, SelectValue(base.val, n.key)))
+		return t.add(nodeExpr(node), ctx.newValue(name, ctx.selectValue(base.val, n.key, name)))
 	case selectIndexNode:
 		base := t.eval(ctx, n.base)
 		key := n.staticKey
@@ -145,7 +137,7 @@ func (t *explainTrace) eval(ctx *evalContext, node exprNode) Value {
 			key = keyValue.String()
 		}
 		name := indexName(base.name, keyValue)
-		return t.add(nodeExpr(node), ctx.newValue(name, SelectValue(base.val, key)))
+		return t.add(nodeExpr(node), ctx.newValue(name, ctx.selectValue(base.val, key, name)))
 	case callNode:
 		base := t.eval(ctx, n.base)
 		val, err := toFunc(base.val)(t.evalArgs(ctx, n.args)...)

@@ -23,6 +23,8 @@ GoEval can evaluate expressions with parameters, arimethetic, logical, and strin
 - structured dependency extraction: `deps, err := goeval.Dependencies("foo[bar] > 0")`
 - evaluation trace: `steps, err := goeval.Explain("foo > 0", params)`
 - decimal arithmetic: `goeval.Full(goeval.WithDecimal(true)).EvalBool("0.1 + 0.2 == 0.3")`
+- strict variables: `goeval.New(goeval.WithStrictVariables(true)).EvalMapBool("foo > 0", params)`
+- compile cache: `goeval.Full(goeval.WithCompileCache(1024))`
 
 It can easily be extended with custom functions or operators:
 
@@ -39,9 +41,74 @@ ok, err := goeval.Full(goeval.WithDecimal(true)).EvalBool(`0.1 + 0.2 == 0.3`)
 
 Compiled expressions also use decimal arithmetic during constant folding when compiled from an evaluable configured with `WithDecimal(true)`.
 
+### Constructors and function sets
+
+Use `New` when you want a locked-down evaluator with no built-in functions. Register only the functions you allow:
+
+```go
+e := goeval.New(goeval.WithFunc("contains", func(args ...any) (any, error) {
+    return strings.Contains(fmt.Sprint(args[0]), fmt.Sprint(args[1])), nil
+}))
+
+ok, err := e.EvalMapBool(`contains(name, "AWS")`, map[string]any{
+    "name": "AWS Marketplace",
+})
+```
+
+Use `Full` or the package-level helpers (`EvalBool`, `Compile`, `Variables`, and so on) when you want the built-in function set.
+
+Custom functions can also be registered with aliases:
+
+```go
+e := goeval.New(
+    goeval.WithFunc("riskScore", riskScore, "risk_score"),
+    goeval.WithFuncAlias("riskScore", "score"),
+)
+
+ok, err := e.EvalMapBool(`risk_score(amount) > 10`, map[string]any{
+    "amount": 320,
+})
+```
+
+### Strict variables and compile cache
+
+Strict variables return errors for missing top-level variables, missing map keys, missing struct fields, nil path traversal, and out-of-range indexes:
+
+```go
+e := goeval.New(goeval.WithStrictVariables(true))
+_, err := e.EvalMapBool(`user.account.id == "1"`, map[string]any{
+    "user": map[string]any{},
+})
+// err contains: undefined path "user.account"
+```
+
+Repeated expressions can be compiled once and reused directly, or cached at evaluator level:
+
+```go
+e := goeval.New(
+    goeval.WithStrictVariables(true),
+    goeval.WithDecimal(true),
+    goeval.WithCompileCache(1024),
+    goeval.WithFunc("contains", func(args ...any) (any, error) {
+        return strings.Contains(fmt.Sprint(args[0]), fmt.Sprint(args[1])), nil
+    }),
+)
+
+compiled, err := e.Compile(`count >= 3 && contains(name, "AWS")`)
+if err != nil {
+    return err
+}
+
+ok, err := compiled.EvalMapBool(map[string]any{
+    "count": "3.0",
+    "name":  "AWS Marketplace",
+})
+```
+
 ### What operators and types does this support?
 - Modifiers: + - / * %
 - Comparators: > >= < <= == != =~ !~ in
+- String, range, window, and membership operators: `contains`, `not contains`, `starts_with`, `not starts_with`, `ends_with`, `not ends_with`, `between`, `not between`, `within_last`, `in`, `not in`
 - Logical ops: || &&
 - Numeric constants, as 64-bit floating point (12345.678)
 - String constants ("foo", 'bar', `baz`)
@@ -53,13 +120,46 @@ Compiled expressions also use decimal arithmetic during constant folding when co
 - Null coalescence: ??
 
 ### Built-in functions
-- Strings: `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `replace`, `strlen`
+- Strings: `contains`, `startsWith` / `starts_with`, `endsWith` / `ends_with`, `lower`, `upper`, `trim`, `replace`, `strlen`
 - Collections: `len`
 - Numbers: `min`, `max`, `abs`, `round`
 - Conversion: `int`, `float`, `decimal`, `string`, `bool`
-- Presence checks: `exists`, `empty`, `notEmpty`, `coalesce`, `default`
+- Presence checks: `exists`, `empty`, `notEmpty` / `not_empty`, `coalesce`, `default`
 - Matching and booleans: `matches`, `regex`, `any`, `all`
+- Ranges and windows: `between`, `withinLast` / `within_last`
 - Time: `now`, `date`, `duration`
+
+Examples:
+
+```go
+ok, err := goeval.Full().EvalMapBool(`between(amount, 100, 500)`, map[string]any{
+    "amount": 320,
+})
+
+ok, err = goeval.Full().EvalMapBool(
+    `withinLast(date(created_at), duration("72h"), date(event_triggered_at))`,
+    map[string]any{
+        "created_at":         "2024-02-20 12:00:00",
+        "event_triggered_at": "2024-02-23 12:00:00",
+    },
+)
+```
+
+The same range and window checks can be written as operators:
+
+```go
+ok, err := goeval.Full().EvalMapBool(`amount between [100, 500]`, map[string]any{
+    "amount": 320,
+})
+
+ok, err = goeval.Full().EvalMapBool(
+    `date(created_at) within_last [duration("72h"), date(event_triggered_at)]`,
+    map[string]any{
+        "created_at":         "2024-02-20 12:00:00",
+        "event_triggered_at": "2024-02-23 12:00:00",
+    },
+)
+```
 
 ### Compile and validate
 ```go

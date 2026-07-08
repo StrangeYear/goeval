@@ -25,9 +25,15 @@ const C_NRE = 57352
 const C_AND = 57353
 const C_OR = 57354
 const C_NC = 57355
-const C_IN = 57356
-const C_IDENTIFIER = 57357
-const C_UMINUS = 57358
+const C_IDENTIFIER = 57356
+const C_IN = 57357
+const C_CONTAINS = 57358
+const C_STARTS_WITH = 57359
+const C_ENDS_WITH = 57360
+const C_BETWEEN = 57361
+const C_WITHIN_LAST = 57362
+const C_NOT = 57363
+const C_UMINUS = 57364
 
 var compileToknames = [...]string{
 	"$end",
@@ -43,8 +49,14 @@ var compileToknames = [...]string{
 	"C_AND",
 	"C_OR",
 	"C_NC",
-	"C_IN",
 	"C_IDENTIFIER",
+	"C_IN",
+	"C_CONTAINS",
+	"C_STARTS_WITH",
+	"C_ENDS_WITH",
+	"C_BETWEEN",
+	"C_WITHIN_LAST",
+	"C_NOT",
 	"'+'",
 	"'-'",
 	"'*'",
@@ -79,92 +91,111 @@ var compileExca = [...]int8{
 
 const compilePrivate = 57344
 
-const compileLast = 120
+const compileLast = 152
 
 var compileAct = [...]int8{
-	35, 2, 3, 34, 64, 4, 63, 76, 32, 33,
-	74, 77, 64, 43, 44, 45, 46, 75, 64, 47,
-	48, 49, 50, 51, 52, 53, 54, 55, 56, 57,
-	58, 59, 60, 61, 62, 73, 64, 7, 36, 15,
-	65, 10, 11, 67, 66, 1, 69, 68, 9, 0,
-	6, 27, 28, 29, 30, 31, 24, 25, 0, 12,
-	26, 0, 8, 0, 5, 72, 16, 17, 18, 19,
-	20, 21, 78, 7, 22, 23, 0, 27, 28, 29,
-	30, 31, 24, 25, 9, 40, 26, 0, 0, 37,
-	13, 14, 13, 14, 0, 12, 42, 0, 8, 41,
-	39, 0, 15, 38, 15, 71, 70, 13, 14, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 15,
+	49, 2, 3, 48, 89, 4, 88, 108, 46, 47,
+	41, 42, 43, 44, 45, 38, 39, 106, 51, 40,
+	23, 58, 59, 60, 61, 109, 89, 62, 63, 64,
+	65, 66, 67, 68, 69, 50, 75, 76, 77, 78,
+	79, 80, 81, 82, 83, 84, 85, 86, 87, 107,
+	89, 105, 89, 7, 90, 91, 104, 89, 93, 92,
+	10, 95, 94, 9, 18, 13, 14, 15, 16, 17,
+	19, 11, 6, 98, 99, 100, 101, 102, 12, 55,
+	1, 20, 0, 0, 8, 0, 5, 0, 0, 0,
+	103, 24, 25, 26, 27, 28, 29, 57, 110, 30,
+	56, 31, 33, 34, 35, 36, 37, 32, 41, 42,
+	43, 44, 45, 38, 39, 7, 52, 40, 21, 22,
+	21, 22, 0, 21, 22, 9, 18, 13, 14, 15,
+	16, 17, 19, 0, 54, 0, 23, 53, 23, 97,
+	96, 23, 0, 20, 0, 0, 8, 70, 71, 72,
+	73, 74,
 }
 
 var compilePact = [...]int16{
-	33, -32768, 96, 61, -32768, 33, 33, -32768, 33, 12,
-	74, 70, 33, 33, 33, 33, 33, 33, 33, 33,
-	33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-	33, 33, -32768, -32768, -24, 96, 33, -32768, 69, 33,
-	-32768, 69, 33, 79, 16, 16, 81, 35, 35, 35,
-	35, 35, 35, 35, 35, -32768, -32768, -32768, -32768, -32768,
-	-32768, -32768, -32768, -32768, 33, 8, -20, -10, -23, -16,
-	-32768, 33, 96, -32768, -32768, -32768, -32768, -32768, -32768,
+	49, -32768, 112, 86, -32768, 49, 49, -32768, 49, 3,
+	-14, 102, 65, -32768, -32768, -32768, -32768, -32768, -32768, -32768,
+	49, 49, 49, 49, 49, 49, 49, 49, 49, 49,
+	49, 49, 132, 49, 49, 49, 49, 49, 49, 49,
+	49, 49, 49, 49, 49, 49, -32768, -32768, -30, 112,
+	49, 49, -32768, 111, 49, -32768, 111, 49, 107, -9,
+	-9, 109, -12, -12, -12, -12, -12, -12, -12, -12,
+	49, 49, 49, 49, 49, -12, -12, -12, -12, -12,
+	-32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, -32768, 49,
+	23, 18, -19, 16, -29, -8, -32768, 49, -12, -12,
+	-12, -12, -12, 112, -32768, -32768, -32768, -32768, -32768, -32768,
+	-32768,
 }
 
 var compilePgo = [...]int8{
-	0, 45, 0, 5, 2, 42, 41, 3,
+	0, 80, 0, 5, 2, 78, 71, 3, 60,
 }
 
 var compileR1 = [...]int8{
-	0, 1, 3, 3, 3, 3, 3, 6, 6, 6,
-	6, 5, 5, 5, 5, 7, 7, 7, 4, 4,
+	0, 1, 3, 3, 3, 3, 3, 3, 8, 8,
+	8, 8, 8, 8, 8, 6, 6, 6, 6, 5,
+	5, 5, 5, 5, 7, 7, 7, 4, 4, 4,
 	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 4, 2, 2, 2,
-	2,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 2, 2, 2, 2,
 }
 
 var compileR2 = [...]int8{
-	0, 1, 1, 3, 4, 1, 1, 3, 2, 4,
-	4, 1, 2, 4, 4, 0, 1, 3, 1, 2,
-	2, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 1, 3, 3,
-	5,
+	0, 1, 1, 3, 4, 4, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 3, 2, 4, 4, 1,
+	1, 2, 4, 4, 0, 1, 3, 1, 2, 2,
+	3, 3, 3, 3, 3, 3, 3, 3, 4, 3,
+	4, 3, 4, 3, 4, 3, 4, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 1, 3, 3, 5,
 }
 
 var compileChk = [...]int16{
-	-32768, -1, -2, -4, -3, 31, 17, 4, 29, 15,
-	-6, -5, 26, 11, 12, 23, 5, 6, 7, 8,
-	9, 10, 13, 14, 21, 22, 25, 16, 17, 18,
-	19, 20, -4, -4, -7, -2, 26, 15, 29, 26,
-	15, 29, 26, -2, -2, -2, -2, -4, -4, -4,
-	-4, -4, -4, -4, -4, -4, -4, -4, -4, -4,
-	-4, -4, -4, 30, 28, -7, -3, -7, -3, -7,
-	27, 24, -2, 27, 30, 27, 30, 27, -2,
+	-32768, -1, -2, -4, -3, 37, 23, 4, 35, 14,
+	-8, -6, -5, 16, 17, 18, 19, 20, 15, 21,
+	32, 11, 12, 29, 5, 6, 7, 8, 9, 10,
+	13, 15, 21, 16, 17, 18, 19, 20, 27, 28,
+	31, 22, 23, 24, 25, 26, -4, -4, -7, -2,
+	32, 32, 14, 35, 32, 14, 35, 32, -2, -2,
+	-2, -2, -4, -4, -4, -4, -4, -4, -4, -4,
+	15, 16, 17, 18, 19, -4, -4, -4, -4, -4,
+	-4, -4, -4, -4, -4, -4, -4, -4, 36, 34,
+	-7, -7, -3, -7, -3, -7, 33, 30, -4, -4,
+	-4, -4, -4, -2, 33, 33, 36, 33, 36, 33,
+	-2,
 }
 
 var compileDef = [...]int8{
-	0, -2, 1, 37, 18, 0, 0, 2, 15, 11,
-	5, 6, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, -2, 1, 56, 27, 0, 0, 2, 24, 19,
+	20, 6, 7, 8, 9, 10, 11, 12, 13, 14,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 19, 20, 0, 16, 15, 8, 0, 15,
-	12, 0, 15, 0, 38, 39, 0, 21, 22, 23,
-	24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
-	34, 35, 36, 3, 0, 0, 0, 0, 0, 0,
-	7, 0, 17, 4, 9, 10, 13, 14, 40,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 28, 29, 0, 25,
+	24, 24, 16, 0, 24, 21, 0, 24, 0, 57,
+	58, 0, 30, 31, 32, 33, 34, 35, 36, 37,
+	0, 0, 0, 0, 0, 39, 41, 43, 45, 47,
+	48, 49, 50, 51, 52, 53, 54, 55, 3, 0,
+	0, 0, 0, 0, 0, 0, 15, 0, 38, 40,
+	42, 44, 46, 26, 4, 5, 17, 18, 22, 23,
+	59,
 }
 
 var compileTok1 = [...]int8{
 	1, 3, 3, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 3, 3, 31, 3, 3, 3, 20, 3, 3,
-	26, 27, 18, 16, 28, 17, 3, 19, 3, 3,
-	3, 3, 3, 3, 3, 3, 3, 3, 24, 3,
-	21, 25, 22, 23, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 37, 3, 3, 3, 26, 3, 3,
+	32, 33, 24, 22, 34, 23, 3, 25, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3, 30, 3,
+	27, 31, 28, 29, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 29, 3, 30,
+	3, 35, 3, 36,
 }
 
 var compileTok2 = [...]int8{
 	2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-	12, 13, 14, 15, 32,
+	12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+	38,
 }
 
 var compileTok3 = [...]int8{
@@ -510,7 +541,7 @@ compiledefault:
 
 	case 1:
 		compileDollar = compileS[compilept-1 : compilept+1]
-//line compile_parser.y:25
+//line compile_parser.y:26
 		{
 			compilelex.(*compileLexerAdapter).answer = compileDollar[1].node
 			compileVAL.node = compileDollar[1].node
@@ -518,211 +549,325 @@ compiledefault:
 		}
 	case 2:
 		compileDollar = compileS[compilept-1 : compilept+1]
-//line compile_parser.y:33
+//line compile_parser.y:34
 		{
 			compileVAL.node = compileDollar[1].node
 		}
 	case 3:
 		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:37
+//line compile_parser.y:38
 		{
 			compileVAL.node = arrayNode{items: compileDollar[2].nodes}
 		}
 	case 4:
 		compileDollar = compileS[compilept-4 : compilept+1]
-//line compile_parser.y:41
+//line compile_parser.y:42
 		{
 			compileVAL.node = functionNode{name: compileDollar[1].name, args: compileDollar[3].nodes}
 		}
-	case 7:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:50
+	case 5:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:46
 		{
-			compileVAL.node = compileDollar[2].node
+			compileVAL.node = functionNode{name: compileDollar[1].name, args: compileDollar[3].nodes}
 		}
 	case 8:
-		compileDollar = compileS[compilept-2 : compilept+1]
-//line compile_parser.y:54
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:55
 		{
-			compileVAL.node = selectNameNode{base: compileDollar[1].node, key: compileDollar[2].name}
+			compileVAL.name = compileDollar[1].name
 		}
 	case 9:
-		compileDollar = compileS[compilept-4 : compilept+1]
-//line compile_parser.y:58
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:59
 		{
-			compileVAL.node = selectIndexExpr(compileDollar[1].node, compileDollar[3].node)
+			compileVAL.name = compileDollar[1].name
 		}
 	case 10:
-		compileDollar = compileS[compilept-4 : compilept+1]
-//line compile_parser.y:62
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:63
 		{
-			compileVAL.node = callNode{base: compileDollar[1].node, args: compileDollar[3].nodes}
+			compileVAL.name = compileDollar[1].name
 		}
 	case 11:
 		compileDollar = compileS[compilept-1 : compilept+1]
-//line compile_parser.y:68
+//line compile_parser.y:67
 		{
-			compileVAL.node = variableNode{name: compileDollar[1].name}
+			compileVAL.name = compileDollar[1].name
 		}
 	case 12:
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:71
+		{
+			compileVAL.name = compileDollar[1].name
+		}
+	case 13:
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:75
+		{
+			compileVAL.name = compileDollar[1].name
+		}
+	case 14:
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:79
+		{
+			compileVAL.name = compileDollar[1].name
+		}
+	case 15:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:86
+		{
+			compileVAL.node = compileDollar[2].node
+		}
+	case 16:
 		compileDollar = compileS[compilept-2 : compilept+1]
-//line compile_parser.y:72
+//line compile_parser.y:90
 		{
 			compileVAL.node = selectNameNode{base: compileDollar[1].node, key: compileDollar[2].name}
 		}
-	case 13:
+	case 17:
 		compileDollar = compileS[compilept-4 : compilept+1]
-//line compile_parser.y:76
+//line compile_parser.y:94
 		{
 			compileVAL.node = selectIndexExpr(compileDollar[1].node, compileDollar[3].node)
 		}
-	case 14:
+	case 18:
 		compileDollar = compileS[compilept-4 : compilept+1]
-//line compile_parser.y:80
+//line compile_parser.y:98
 		{
 			compileVAL.node = callNode{base: compileDollar[1].node, args: compileDollar[3].nodes}
 		}
-	case 15:
+	case 19:
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:105
+		{
+			compileVAL.node = variableNode{name: compileDollar[1].name}
+		}
+	case 20:
+		compileDollar = compileS[compilept-1 : compilept+1]
+//line compile_parser.y:109
+		{
+			compileVAL.node = variableNode{name: compileDollar[1].name}
+		}
+	case 21:
+		compileDollar = compileS[compilept-2 : compilept+1]
+//line compile_parser.y:113
+		{
+			compileVAL.node = selectNameNode{base: compileDollar[1].node, key: compileDollar[2].name}
+		}
+	case 22:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:117
+		{
+			compileVAL.node = selectIndexExpr(compileDollar[1].node, compileDollar[3].node)
+		}
+	case 23:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:121
+		{
+			compileVAL.node = callNode{base: compileDollar[1].node, args: compileDollar[3].nodes}
+		}
+	case 24:
 		compileDollar = compileS[compilept-0 : compilept+1]
-//line compile_parser.y:85
+//line compile_parser.y:127
 		{
 			compileVAL.nodes = nil
 		}
-	case 16:
+	case 25:
 		compileDollar = compileS[compilept-1 : compilept+1]
-//line compile_parser.y:89
+//line compile_parser.y:131
 		{
 			compileVAL.nodes = []exprNode{compileDollar[1].node}
 		}
-	case 17:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:93
-		{
-			compileVAL.nodes = append(compileVAL.nodes, compileDollar[3].node)
-		}
-	case 19:
-		compileDollar = compileS[compilept-2 : compilept+1]
-//line compile_parser.y:99
-		{
-			compileVAL.node = unaryNode{op: "!", x: compileDollar[2].node}
-		}
-	case 20:
-		compileDollar = compileS[compilept-2 : compilept+1]
-//line compile_parser.y:102
-		{
-			compileVAL.node = unaryNode{op: "-", x: compileDollar[2].node}
-		}
-	case 21:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:105
-		{
-			compileVAL.node = binaryNode{op: opEq, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 22:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:108
-		{
-			compileVAL.node = binaryNode{op: opNeq, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 23:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:111
-		{
-			compileVAL.node = binaryNode{op: opGte, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 24:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:114
-		{
-			compileVAL.node = binaryNode{op: opLte, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 25:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:117
-		{
-			compileVAL.node = binaryNode{op: opRe, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
 	case 26:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:120
-		{
-			compileVAL.node = binaryNode{op: opNre, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 27:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:123
-		{
-			compileVAL.node = binaryNode{op: opNc, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 28:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:126
-		{
-			compileVAL.node = binaryNode{op: opIn, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 29:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:129
-		{
-			compileVAL.node = binaryNode{op: opLt, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 30:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:132
-		{
-			compileVAL.node = binaryNode{op: opGt, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 31:
 		compileDollar = compileS[compilept-3 : compilept+1]
 //line compile_parser.y:135
 		{
-			compileVAL.node = binaryNode{op: opMatch, left: compileDollar[1].node, right: compileDollar[3].node}
+			compileVAL.nodes = append(compileVAL.nodes, compileDollar[3].node)
 		}
-	case 32:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:138
-		{
-			compileVAL.node = binaryNode{op: opAdd, left: compileDollar[1].node, right: compileDollar[3].node}
-		}
-	case 33:
-		compileDollar = compileS[compilept-3 : compilept+1]
+	case 28:
+		compileDollar = compileS[compilept-2 : compilept+1]
 //line compile_parser.y:141
 		{
-			compileVAL.node = binaryNode{op: opSub, left: compileDollar[1].node, right: compileDollar[3].node}
+			compileVAL.node = unaryNode{op: "!", x: compileDollar[2].node}
 		}
-	case 34:
-		compileDollar = compileS[compilept-3 : compilept+1]
+	case 29:
+		compileDollar = compileS[compilept-2 : compilept+1]
 //line compile_parser.y:144
 		{
-			compileVAL.node = binaryNode{op: opMulti, left: compileDollar[1].node, right: compileDollar[3].node}
+			compileVAL.node = unaryNode{op: "-", x: compileDollar[2].node}
 		}
-	case 35:
+	case 30:
 		compileDollar = compileS[compilept-3 : compilept+1]
 //line compile_parser.y:147
 		{
-			compileVAL.node = binaryNode{op: opDiv, left: compileDollar[1].node, right: compileDollar[3].node}
+			compileVAL.node = binaryNode{op: opEq, left: compileDollar[1].node, right: compileDollar[3].node}
 		}
-	case 36:
+	case 31:
 		compileDollar = compileS[compilept-3 : compilept+1]
 //line compile_parser.y:150
 		{
-			compileVAL.node = binaryNode{op: opMod, left: compileDollar[1].node, right: compileDollar[3].node}
+			compileVAL.node = binaryNode{op: opNeq, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 32:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:153
+		{
+			compileVAL.node = binaryNode{op: opGte, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 33:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:156
+		{
+			compileVAL.node = binaryNode{op: opLte, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 34:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:159
+		{
+			compileVAL.node = binaryNode{op: opRe, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 35:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:162
+		{
+			compileVAL.node = binaryNode{op: opNre, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 36:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:165
+		{
+			compileVAL.node = binaryNode{op: opNc, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 37:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:168
+		{
+			compileVAL.node = binaryNode{op: opIn, left: compileDollar[1].node, right: compileDollar[3].node}
 		}
 	case 38:
-		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:157
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:171
 		{
-			compileVAL.node = binaryNode{op: opAnd, left: compileDollar[1].node, right: compileDollar[3].node}
+			compileVAL.node = binaryNode{op: opNotIn, left: compileDollar[1].node, right: compileDollar[4].node}
 		}
 	case 39:
 		compileDollar = compileS[compilept-3 : compilept+1]
-//line compile_parser.y:160
+//line compile_parser.y:174
+		{
+			compileVAL.node = binaryNode{op: opContains, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 40:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:177
+		{
+			compileVAL.node = binaryNode{op: opNotContains, left: compileDollar[1].node, right: compileDollar[4].node}
+		}
+	case 41:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:180
+		{
+			compileVAL.node = binaryNode{op: opStartsWith, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 42:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:183
+		{
+			compileVAL.node = binaryNode{op: opNotStartsWith, left: compileDollar[1].node, right: compileDollar[4].node}
+		}
+	case 43:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:186
+		{
+			compileVAL.node = binaryNode{op: opEndsWith, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 44:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:189
+		{
+			compileVAL.node = binaryNode{op: opNotEndsWith, left: compileDollar[1].node, right: compileDollar[4].node}
+		}
+	case 45:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:192
+		{
+			compileVAL.node = binaryNode{op: opBetween, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 46:
+		compileDollar = compileS[compilept-4 : compilept+1]
+//line compile_parser.y:195
+		{
+			compileVAL.node = binaryNode{op: opNotBetween, left: compileDollar[1].node, right: compileDollar[4].node}
+		}
+	case 47:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:198
+		{
+			compileVAL.node = binaryNode{op: opWithinLast, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 48:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:201
+		{
+			compileVAL.node = binaryNode{op: opLt, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 49:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:204
+		{
+			compileVAL.node = binaryNode{op: opGt, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 50:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:207
+		{
+			compileVAL.node = binaryNode{op: opMatch, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 51:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:210
+		{
+			compileVAL.node = binaryNode{op: opAdd, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 52:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:213
+		{
+			compileVAL.node = binaryNode{op: opSub, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 53:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:216
+		{
+			compileVAL.node = binaryNode{op: opMulti, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 54:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:219
+		{
+			compileVAL.node = binaryNode{op: opDiv, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 55:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:222
+		{
+			compileVAL.node = binaryNode{op: opMod, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 57:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:229
+		{
+			compileVAL.node = binaryNode{op: opAnd, left: compileDollar[1].node, right: compileDollar[3].node}
+		}
+	case 58:
+		compileDollar = compileS[compilept-3 : compilept+1]
+//line compile_parser.y:232
 		{
 			compileVAL.node = binaryNode{op: opOr, left: compileDollar[1].node, right: compileDollar[3].node}
 		}
-	case 40:
+	case 59:
 		compileDollar = compileS[compilept-5 : compilept+1]
-//line compile_parser.y:163
+//line compile_parser.y:235
 		{
 			compileVAL.node = ternaryNode{cond: compileDollar[1].node, truthy: compileDollar[3].node, falsy: compileDollar[5].node}
 		}
