@@ -27,6 +27,8 @@ func init() {
 	falseValue = NewValue("", false)
 }
 
+type ValueType uint8
+
 const (
 	Nil = iota
 	Boolean
@@ -45,6 +47,31 @@ type Value struct {
 	name  string
 	val   any
 	vType uint8
+}
+
+func (v Value) Raw() any {
+	return v.val
+}
+
+func (v Value) Any() any {
+	switch v.vType {
+	case Nil:
+		return nil
+	case Boolean:
+		return v.Boolean()
+	case Number:
+		return json.Number(v.Decimal().String())
+	case String:
+		return v.String()
+	case Array:
+		return v.Array()
+	default:
+		return v.val
+	}
+}
+
+func (v Value) Type() ValueType {
+	return ValueType(v.vType)
 }
 
 func convertNumberToFloat(num any) float64 {
